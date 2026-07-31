@@ -9,7 +9,23 @@ import { Flex } from "@dynatrace/strato-components/layouts";
 import { Heading, Paragraph, Text } from "@dynatrace/strato-components/typography";
 import Colors from "@dynatrace/strato-design-tokens/colors";
 import Borders from "@dynatrace/strato-design-tokens/borders";
-import { APP_VERSION, COMMIT_HASH, COMMIT_DATE } from "../../generated/build-info";
+import { getAppVersion } from "@dynatrace-sdk/app-environment";
+import { COMMIT_HASH, COMMIT_DATE } from "../../generated/build-info";
+
+// Same source AppFooter uses — the live, deployed app manifest's version, via
+// the platform SDK. `COMMIT_HASH`/`COMMIT_DATE` have no SDK equivalent (they're
+// genuinely build-time-only facts) so those still come from the generated
+// module, but the version number itself must never be a second, independently
+// generated copy of the same fact: that file is only regenerated when a build
+// actually runs through the npm prebuild/predeploy/prestart hooks, so calling
+// the underlying `dt-app` CLI directly (bypassing `npm run`) silently leaves
+// it stale — which is exactly what caused this page to disagree with the
+// footer. Reading getAppVersion() here instead makes that impossible.
+const VERSION_FALLBACK = "dev";
+const appVersion = (): string => {
+  const raw = getAppVersion();
+  return raw === "dt.missing.app.version" || !raw ? VERSION_FALLBACK : raw;
+};
 
 // ─── CONFIG ─────────────────────────────────────────────────────────
 const CONFIG = {
@@ -63,7 +79,7 @@ export const About = () => {
 
   const rows: { label: string; value: React.ReactNode }[] = [
     { label: "App", value: CONFIG.appName },
-    { label: "Version", value: <code>v{APP_VERSION}</code> },
+    { label: "Version", value: <code>v{appVersion()}</code> },
     {
       label: "Build",
       value: (

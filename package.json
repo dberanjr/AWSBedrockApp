@@ -1,6 +1,6 @@
 {
   "name": "aws-bedrock-observability-app",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Runtime observability, cost & usage, and access governance for AWS Bedrock — a native Dynatrace AppEngine app",
   "scripts": {
     "build:info": "node scripts/build-info.mjs",
