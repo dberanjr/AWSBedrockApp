@@ -1,0 +1,213 @@
+import React from "react";
+import { Flex } from "@dynatrace/strato-components/layouts";
+import { Text } from "@dynatrace/strato-components/typography";
+import { FilterTrigger } from "../FilterTrigger";
+
+export interface DonutSlice {
+  key: string;
+  label: string;
+  value: number;
+  color: string;
+  /** Optional sublabel rendered under the legend label (e.g. "12% (Bedrock proxy)"). */
+  sub?: string;
+  /** When set, the legend label becomes click-to-filter. */
+  filter?: { attribute: string; values: string[]; label?: string };
+}
+
+export interface DonutProps {
+  slices: DonutSlice[];
+  /** Big number rendered in the center. */
+  centerValue?: string;
+  /** Small caption under the center value. */
+  centerLabel?: string;
+  size?: number;
+  thickness?: number;
+  /** Accessible label for the chart. Defaults to a spoken summary of the slices
+   *  so a screen reader announces the actual distribution, not a fixed name. */
+  ariaLabel?: string;
+  /** Formats each slice's raw value for the hover tooltip (native `title` on the
+   *  arc + legend row). Callers pass the right unit (e.g. `n => `${fmtCount(n)} req``);
+   *  defaults to a rounded integer so the value is always surfaced on hover. */
+  valueFormatter?: (n: number) => string;
+}
+
+const arcPath = (
+  cx: number,
+  cy: number,
+  r: number,
+  rInner: number,
+  startAngle: number,
+  endAngle: number,
+): string => {
+  const large = endAngle - startAngle > Math.PI ? 1 : 0;
+  const x1 = cx + Math.cos(startAngle) * r;
+  const y1 = cy + Math.sin(startAngle) * r;
+  const x2 = cx + Math.cos(endAngle) * r;
+  const y2 = cy + Math.sin(endAngle) * r;
+  const xi1 = cx + Math.cos(endAngle) * rInner;
+  const yi1 = cy + Math.sin(endAngle) * rInner;
+  const xi2 = cx + Math.cos(startAngle) * rInner;
+  const yi2 = cy + Math.sin(startAngle) * rInner;
+  return [
+    `M ${x1} ${y1}`,
+    `A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`,
+    `L ${xi1} ${yi1}`,
+    `A ${rInner} ${rInner} 0 ${large} 0 ${xi2} ${yi2}`,
+    "Z",
+  ].join(" ");
+};
+
+/**
+ * Defined CSS custom property guaranteed to resolve in every theme. Used as
+ * the final fallback in the slice-color chain so no slice can ever render
+ * white because of a typo'd or missing color token.
+ */
+const SAFE_FALLBACK_FILL = "var(--blue)";
+
+/** Resolve a slice color, falling through known defaults. */
+const safeFill = (color: string | undefined | null): string =>
+  color && color.trim().length > 0 ? color : SAFE_FALLBACK_FILL;
+
+export const Donut = ({
+  slices,
+  centerValue,
+  centerLabel,
+  size = 140,
+  thickness = 22,
+  ariaLabel,
+  valueFormatter,
+}: DonutProps) => {
+  const total = slices.reduce((acc, s) => acc + s.value, 0);
+  const fmtVal = valueFormatter ?? ((n: number) => String(Math.round(n)));
+  /** Native-title hover text: label + raw value + share. */
+  const hoverText = (label: string, value: number, pct: number): string =>
+    `${label}: ${fmtVal(value)} (${pct.toFixed(1)}%)`;
+  const label =
+    ariaLabel ??
+    (slices.length > 0
+      ? `Distribution: ${slices
+          .map(
+            (s) =>
+              `${s.label} ${total > 0 ? Math.round((s.value / total) * 100) : 0}%`,
+          )
+          .join(", ")}`
+      : "Distribution (no data)");
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size / 2 - 2;
+  const rInner = r - thickness;
+
+  let angle = -Math.PI / 2;
+  const arcs = slices.map((s) => {
+    const frac = total > 0 ? s.value / total : 0;
+    const start = angle;
+    const end = angle + frac * Math.PI * 2;
+    angle = end;
+    return { slice: s, d: arcPath(cx, cy, r, rInner, start, end), frac };
+  });
+
+  return (
+    <Flex alignItems="center" gap={16}>
+      <div
+        style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}
+      >
+        <svg width={size} height={size} role="img" aria-label={label}>
+          <circle cx={cx} cy={cy} r={r} fill="var(--surface-2)" />
+          {arcs.map(({ slice, d, frac }) =>
+            d ? (
+              <path key={slice.key} d={d} fill={safeFill(slice.color)}>
+                {/* Native SVG <title> — hovering the arc surfaces its raw value
+                    (formatted by the caller) alongside label + share. */}
+                <title>{hoverText(slice.label, slice.value, frac * 100)}</title>
+              </path>
+            ) : null,
+          )}
+          <circle cx={cx} cy={cy} r={rInner} fill="var(--surface)" />
+        </svg>
+        {(centerValue || centerLabel) && (
+          <Flex
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+            }}
+          >
+            {centerValue && (
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: 600,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {centerValue}
+              </Text>
+            )}
+            {centerLabel && (
+              <Text style={{ fontSize: 10.5, color: "var(--text-3)" }}>
+                {centerLabel}
+              </Text>
+            )}
+          </Flex>
+        )}
+      </div>
+
+      <Flex flexDirection="column" gap={6} style={{ minWidth: 0 }}>
+        {slices.map((s) => {
+          const pct = total > 0 ? (s.value / total) * 100 : 0;
+          return (
+            <Flex
+              key={s.key}
+              alignItems="center"
+              gap={8}
+              title={hoverText(s.label, s.value, pct)}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 2,
+                  background: safeFill(s.color),
+                  flex: "0 0 auto",
+                }}
+              />
+              <Flex flexDirection="column" gap={0}>
+                <Text style={{ fontSize: 12.5 }}>
+                  {s.filter ? (
+                    <FilterTrigger
+                      attribute={s.filter.attribute}
+                      value={s.filter.values}
+                      label={s.filter.label ?? s.label}
+                    >
+                      {s.label}
+                    </FilterTrigger>
+                  ) : (
+                    s.label
+                  )}{" "}
+                  <Text
+                    as="span"
+                    style={{
+                      color: "var(--text-3)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {pct.toFixed(1)}%
+                  </Text>
+                </Text>
+                {s.sub && (
+                  <Text style={{ fontSize: 11, color: "var(--text-3)" }}>
+                    {s.sub}
+                  </Text>
+                )}
+              </Flex>
+            </Flex>
+          );
+        })}
+      </Flex>
+    </Flex>
+  );
+};

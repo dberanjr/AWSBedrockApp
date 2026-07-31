@@ -1,0 +1,21 @@
+{
+  "$schema": "./.dt-app/app.config.schema.json",
+  "environmentUrl": "https://your-tenant.apps.dynatrace.com/",
+  "app": {
+    "name": "AWS Bedrock Observability App",
+    "version": "0.1.0",
+    "description": "Runtime observability, cost & usage, and access governance for AWS Bedrock",
+    "id": "my.aws.bedrock.observability.app",
+    "scopes": [
+      { "name": "storage:logs:read", "comment": "Read the Bedrock ModelInvocationLog for token, cost, session, and error detail" },
+      { "name": "storage:metrics:read", "comment": "Read CloudWatch metrics (cloud.aws.bedrock.*, cloud.aws.bedrock_guardrails.*) for latency, throughput, quota, and guardrails" },
+      { "name": "storage:events:read", "comment": "Read CloudTrail events (bedrock.amazonaws.com) for access & governance auditing" },
+      { "name": "storage:buckets:read", "comment": "Required by Grail for bucket-level access to logs/events/metrics tables" },
+      { "name": "storage:filter-segments:read", "comment": "Read tenant-defined filter segments to apply as scope filters" },
+      { "name": "state:user-app-states:read", "comment": "Read per-user persisted state (timeframe, sampling, scan limit, tweaks, filters)" },
+      { "name": "state:user-app-states:write", "comment": "Persist per-user state changes" },
+      { "name": "state:app-states:read", "comment": "Read org-wide app state (model rates shared across all users of this app)" },
+      { "name": "state:app-states:write", "comment": "Persist org-wide app state (model rate edits made via the Model Rates panel)" }
+    ]
+  }
+}

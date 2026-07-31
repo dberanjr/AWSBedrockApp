@@ -1,0 +1,781 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { Flex } from "@dynatrace/strato-components/layouts";
+import { Heading, Text } from "@dynatrace/strato-components/typography";
+import { Button } from "@dynatrace/strato-components/buttons";
+import { useModelPricing, type PricingConfig } from "./ModelPricingContext";
+import {
+  getBedrockPricingTable,
+  normalizeModelKey,
+  platformKey,
+  PRICING,
+  PRICING_BEDROCK,
+  type ModelPricing,
+} from "../data/pricing";
+import { useModalA11y } from "../components/useModalA11y";
+
+type Tier = ModelPricing["tier"];
+const TIERS: Tier[] = ["low", "mid", "high", "frontier"];
+
+/** Every draft is saved under the `aws_bedrock::` namespace — this app only
+ *  ever prices Bedrock-hosted invocations, so there's no platform selector. */
+const draftKeyFor = (modelKey: string): string =>
+  platformKey("aws_bedrock", modelKey);
+
+/** Row display label — strips the `aws_bedrock::` prefix for display. */
+const displayModelKey = (key: string): string => {
+  const prefix = "aws_bedrock::";
+  return key.startsWith(prefix) ? key.slice(prefix.length) : key;
+};
+
+/** Read a `notes` string off a built-in pricing entry. ModelPricing has no
+ *  `notes` in its type (it's stashed at runtime), so narrow with `in` rather
+ *  than an assertion the linter false-positives on. */
+const pricingNotes = (p: unknown): string => {
+  if (p && typeof p === "object" && "notes" in p) {
+    const n = (p as { notes?: unknown }).notes;
+    return typeof n === "string" ? n : "";
+  }
+  return "";
+};
+
+interface Draft extends ModelPricing {
+  key: string;
+  /** Optional human-friendly notes (rate card link, sales contact, etc.). */
+  notes?: string;
+}
+
+/** Every key baked into either rate table — anything else in overrides is a
+ *  user-added custom model. */
+const builtinKeys = (): Set<string> =>
+  new Set([...Object.keys(PRICING), ...Object.keys(PRICING_BEDROCK)]);
+
+/**
+ * Group a list of pricing entries by provider so the panel renders one
+ * section per vendor (Anthropic / Amazon / Meta / Other …).
+ */
+const groupByProvider = (drafts: Draft[]): Record<string, Draft[]> => {
+  const out: Record<string, Draft[]> = {};
+  for (const d of drafts) {
+    const provider = d.provider || "Other";
+    (out[provider] ||= []).push(d);
+  }
+  for (const list of Object.values(out)) {
+    list.sort((a, b) => a.key.localeCompare(b.key));
+  }
+  return out;
+};
+
+const buildInitialDrafts = (config: PricingConfig): Draft[] => {
+  // Every model Bedrock might invoke (general rate card ∪ Bedrock-native),
+  // at its effective rate, all keyed under the aws_bedrock:: namespace.
+  const merged = getBedrockPricingTable();
+  const drafts: Draft[] = Object.entries(merged).map(([key, p]) => {
+    const dKey = draftKeyFor(key);
+    return {
+      key: dKey,
+      ...p,
+      notes: (config.overrides[dKey] as ModelPricing & { notes?: string })?.notes,
+    };
+  });
+  // Surface user-added custom models that aren't in the merged map.
+  for (const [rawKey, p] of Object.entries(config.overrides)) {
+    const modelKey = rawKey.startsWith("aws_bedrock::")
+      ? rawKey.slice("aws_bedrock::".length)
+      : rawKey;
+    const dKey = draftKeyFor(normalizeModelKey(modelKey));
+    if (!drafts.find((d) => d.key === dKey)) {
+      drafts.push({ key: dKey, ...p });
+    }
+  }
+  drafts.sort((a, b) => a.key.localeCompare(b.key));
+  return drafts;
+};
+
+interface NumberInputProps {
+  value: number;
+  onChange: (n: number) => void;
+  step?: number;
+  width?: number;
+  ariaLabel: string;
+}
+const NumberInput = ({
+  value,
+  onChange,
+  step = 0.01,
+  width = 96,
+  ariaLabel,
+}: NumberInputProps) => (
+  <input
+    type="number"
+    inputMode="decimal"
+    step={step}
+    value={Number.isFinite(value) ? value : 0}
+    onChange={(e) => {
+      const n = Number(e.target.value);
+      if (Number.isFinite(n)) onChange(n);
+    }}
+    aria-label={ariaLabel}
+    style={{
+      width,
+      padding: "4px 6px",
+      border: "1px solid var(--border)",
+      borderRadius: 4,
+      background: "var(--surface)",
+      color: "var(--text)",
+      fontSize: 12,
+      fontFamily: "inherit",
+      fontVariantNumeric: "tabular-nums",
+    }}
+  />
+);
+
+interface TextInputProps {
+  value: string;
+  onChange: (s: string) => void;
+  width?: number;
+  ariaLabel: string;
+  placeholder?: string;
+}
+const TextInput = ({
+  value,
+  onChange,
+  width = 160,
+  ariaLabel,
+  placeholder,
+}: TextInputProps) => (
+  <input
+    type="text"
+    value={value}
+    placeholder={placeholder}
+    onChange={(e) => onChange(e.target.value)}
+    aria-label={ariaLabel}
+    style={{
+      width,
+      padding: "4px 6px",
+      border: "1px solid var(--border)",
+      borderRadius: 4,
+      background: "var(--surface)",
+      color: "var(--text)",
+      fontSize: 12,
+      fontFamily: "inherit",
+    }}
+  />
+);
+
+const Pill = ({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "purple";
+}) => (
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      fontSize: 10,
+      fontWeight: 600,
+      letterSpacing: "0.04em",
+      textTransform: "uppercase",
+      padding: "2px 8px",
+      borderRadius: 999,
+      background: tone === "purple" ? "var(--intel-soft)" : "var(--surface-2)",
+      color: tone === "purple" ? "var(--purple-2)" : "var(--text-3)",
+      border: tone === "purple" ? "1px solid var(--purple-2)" : "1px solid var(--border)",
+    }}
+  >
+    {children}
+  </span>
+);
+
+interface PricingRowProps {
+  draft: Draft;
+  editing: boolean;
+  onChange: (next: Draft) => void;
+  onEdit: () => void;
+  onRevertRow: () => void;
+  isOverride: boolean;
+  isCustom: boolean;
+}
+
+const PricingRow = ({
+  draft,
+  editing,
+  onChange,
+  onEdit,
+  onRevertRow,
+  isOverride,
+  isCustom,
+}: PricingRowProps) => (
+  <div
+    style={{
+      padding: "10px 12px",
+      borderTop: "1px solid var(--border)",
+      display: "grid",
+      gridTemplateColumns: "minmax(180px, 1.5fr) 110px 110px 130px 110px auto",
+      alignItems: "center",
+      columnGap: 12,
+      rowGap: 6,
+    }}
+  >
+    <Flex flexDirection="column" gap={2} style={{ minWidth: 0 }}>
+      <Flex alignItems="center" gap={6}>
+        <Text
+          style={{
+            fontFamily: "var(--mono, monospace)",
+            fontSize: 12.5,
+            color: "var(--text)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {displayModelKey(draft.key)}
+        </Text>
+        {isCustom && <Pill tone="purple">Custom</Pill>}
+        {!isCustom && isOverride && <Pill>Edited</Pill>}
+      </Flex>
+      {editing ? (
+        <TextInput
+          value={draft.notes ?? ""}
+          width={260}
+          placeholder="Notes (optional)"
+          ariaLabel="Notes"
+          onChange={(v) => onChange({ ...draft, notes: v })}
+        />
+      ) : draft.notes ? (
+        <Text style={{ fontSize: 11, color: "var(--text-3)" }}>{draft.notes}</Text>
+      ) : null}
+    </Flex>
+
+    {editing ? (
+      <NumberInput
+        ariaLabel="Input per 1M tokens"
+        value={draft.inputPerMTok}
+        onChange={(n) => onChange({ ...draft, inputPerMTok: n })}
+      />
+    ) : (
+      <Text style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
+        ${draft.inputPerMTok.toFixed(2)}
+      </Text>
+    )}
+
+    {editing ? (
+      <NumberInput
+        ariaLabel="Output per 1M tokens"
+        value={draft.outputPerMTok}
+        onChange={(n) => onChange({ ...draft, outputPerMTok: n })}
+      />
+    ) : (
+      <Text style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
+        ${draft.outputPerMTok.toFixed(2)}
+      </Text>
+    )}
+
+    {editing ? (
+      <NumberInput
+        ariaLabel="Context window"
+        step={1000}
+        width={120}
+        value={draft.contextWindow ?? 0}
+        onChange={(n) => onChange({ ...draft, contextWindow: n > 0 ? n : null })}
+      />
+    ) : (
+      <Text style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
+        {draft.contextWindow != null ? draft.contextWindow.toLocaleString() : "—"}
+      </Text>
+    )}
+
+    {editing ? (
+      <select
+        aria-label="Tier"
+        value={draft.tier}
+        onChange={(e) => onChange({ ...draft, tier: e.target.value as Tier })}
+        style={{
+          padding: "4px 6px",
+          border: "1px solid var(--border)",
+          borderRadius: 4,
+          background: "var(--surface)",
+          color: "var(--text)",
+          fontSize: 12,
+        }}
+      >
+        {TIERS.map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+      </select>
+    ) : (
+      <Text style={{ fontSize: 12, color: "var(--text-3)" }}>{draft.tier}</Text>
+    )}
+
+    <Flex justifyContent="flex-end" gap={4}>
+      {!editing && (
+        <button
+          type="button"
+          onClick={onEdit}
+          style={{
+            all: "unset",
+            cursor: "pointer",
+            fontSize: 11.5,
+            padding: "4px 8px",
+            borderRadius: 4,
+            color: "var(--blue)",
+          }}
+        >
+          Edit
+        </button>
+      )}
+      {isOverride && !isCustom && (
+        <button
+          type="button"
+          onClick={onRevertRow}
+          style={{
+            all: "unset",
+            cursor: "pointer",
+            fontSize: 11,
+            padding: "4px 8px",
+            borderRadius: 4,
+            color: "var(--text-3)",
+          }}
+          title="Revert this model to its built-in defaults"
+        >
+          Revert
+        </button>
+      )}
+    </Flex>
+  </div>
+);
+
+interface AddModelFormProps {
+  onAdd: (draft: Draft) => void;
+  onCancel: () => void;
+  existingKeys: Set<string>;
+}
+
+const AddModelForm = ({ onAdd, onCancel, existingKeys }: AddModelFormProps) => {
+  const [key, setKey] = useState("");
+  const [provider, setProvider] = useState("");
+  const [tier, setTier] = useState<Tier>("mid");
+  const [input, setInput] = useState(0);
+  const [output, setOutput] = useState(0);
+  const [contextWindow, setContextWindow] = useState(0);
+  const [notes, setNotes] = useState("");
+
+  const normalized = normalizeModelKey(key);
+  const savedKey = draftKeyFor(normalized);
+  const dup = key.length > 0 && existingKeys.has(savedKey);
+  const valid = key.trim().length > 0 && provider.trim().length > 0 && !dup;
+
+  return (
+    <div
+      style={{
+        padding: 14,
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        background: "var(--surface-2)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+      }}
+    >
+      <Flex alignItems="center" justifyContent="space-between">
+        <Heading level={4} style={{ fontSize: 13, fontWeight: 700 }}>
+          Add a custom model
+        </Heading>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{ all: "unset", cursor: "pointer", color: "var(--text-3)", fontSize: 14, padding: 2 }}
+        >
+          ×
+        </button>
+      </Flex>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(180px, 1.6fr) 110px 110px 130px 110px",
+          alignItems: "center",
+          columnGap: 12,
+          rowGap: 6,
+        }}
+      >
+        <TextInput
+          ariaLabel="Model key"
+          value={key}
+          width={260}
+          placeholder="e.g. amazon.nova-3-lite"
+          onChange={setKey}
+        />
+        <NumberInput ariaLabel="Input per 1M tokens" value={input} onChange={setInput} />
+        <NumberInput ariaLabel="Output per 1M tokens" value={output} onChange={setOutput} />
+        <NumberInput
+          ariaLabel="Context window"
+          step={1000}
+          width={120}
+          value={contextWindow}
+          onChange={setContextWindow}
+        />
+        <select
+          aria-label="Tier"
+          value={tier}
+          onChange={(e) => setTier(e.target.value as Tier)}
+          style={{
+            padding: "4px 6px",
+            border: "1px solid var(--border)",
+            borderRadius: 4,
+            background: "var(--surface)",
+            color: "var(--text)",
+            fontSize: 12,
+          }}
+        >
+          {TIERS.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
+      <Flex alignItems="center" gap={12}>
+        <TextInput
+          ariaLabel="Provider"
+          value={provider}
+          width={180}
+          placeholder="Provider (e.g. Anthropic)"
+          onChange={setProvider}
+        />
+        <TextInput
+          ariaLabel="Notes"
+          value={notes}
+          width={260}
+          placeholder="Notes (optional)"
+          onChange={setNotes}
+        />
+      </Flex>
+      {dup && (
+        <Text style={{ fontSize: 11.5, color: "var(--red)" }}>
+          A model with key “{savedKey}” already exists.
+        </Text>
+      )}
+      <Flex justifyContent="flex-end" gap={8}>
+        <Button variant="default" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          variant="accent"
+          disabled={!valid}
+          onClick={() =>
+            onAdd({
+              key: savedKey,
+              provider: provider.trim(),
+              tier,
+              inputPerMTok: input,
+              outputPerMTok: output,
+              contextWindow: contextWindow > 0 ? contextWindow : null,
+              notes: notes.trim() || undefined,
+            })
+          }
+        >
+          Add model
+        </Button>
+      </Flex>
+    </div>
+  );
+};
+
+interface RevertConfirmProps {
+  open: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+const RevertConfirm = ({ open, onConfirm, onCancel }: RevertConfirmProps) => {
+  if (!open) return null;
+  return (
+    <div
+      role="alertdialog"
+      aria-label="Revert rates to defaults"
+      onClick={onCancel}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(10, 10, 11, 0.55)",
+        zIndex: 1300,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--surface)",
+          padding: 20,
+          borderRadius: 10,
+          maxWidth: 420,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+        }}
+      >
+        <Heading level={3} style={{ fontSize: 16, fontWeight: 700 }}>
+          Revert to defaults?
+        </Heading>
+        <Text style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 8, display: "block" }}>
+          This drops every per-row edit AND every custom model from the shared
+          config. Built-in rates for the known models are restored. The change
+          applies to every user of this app immediately.
+        </Text>
+        <Flex justifyContent="flex-end" gap={8} style={{ marginTop: 16 }}>
+          <Button variant="default" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button variant="emphasized" color="critical" onClick={onConfirm}>
+            Revert
+          </Button>
+        </Flex>
+      </div>
+    </div>
+  );
+};
+
+export const ModelPricingPanel = () => {
+  const t = useModelPricing();
+  const [drafts, setDrafts] = useState<Draft[]>(() => buildInitialDrafts(t.config));
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [confirmRevert, setConfirmRevert] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const closeBtnRef = React.useRef<HTMLButtonElement>(null);
+
+  const handleEscClose = React.useCallback(() => {
+    if (!confirmRevert) t.closePanel();
+  }, [confirmRevert, t]);
+
+  useModalA11y(dialogRef, handleEscClose, {
+    initialFocusRef: closeBtnRef,
+    active: t.isPanelOpen,
+  });
+
+  useEffect(() => {
+    if (t.isPanelOpen) {
+      setDrafts(buildInitialDrafts(t.config));
+      setEditingKey(null);
+      setShowAdd(false);
+      setDirty(false);
+    }
+  }, [t.isPanelOpen, t.config]);
+
+  const grouped = useMemo(() => groupByProvider(drafts), [drafts]);
+  const providers = useMemo(() => Object.keys(grouped).sort(), [grouped]);
+  const existingKeys = useMemo(() => new Set(drafts.map((d) => d.key)), [drafts]);
+  const builtIns = useMemo(builtinKeys, []);
+
+  const handleRowChange = (next: Draft) => {
+    setDrafts((cur) => cur.map((d) => (d.key === next.key ? next : d)));
+    setDirty(true);
+  };
+
+  const handleRowRevert = (key: string) => {
+    const remainingOverrides = { ...t.config.overrides };
+    delete remainingOverrides[key];
+    setDrafts(buildInitialDrafts({ overrides: remainingOverrides }));
+    setDirty(true);
+  };
+
+  const handleAdd = (draft: Draft) => {
+    setDrafts((cur) => [...cur, draft]);
+    setShowAdd(false);
+    setDirty(true);
+  };
+
+  const handleSave = () => {
+    const overrides: Record<string, ModelPricing> = {};
+    const builtins = getBedrockPricingTable();
+    for (const d of drafts) {
+      const modelKey = displayModelKey(d.key);
+      const built = builtins[modelKey];
+      const differs =
+        !built ||
+        built.inputPerMTok !== d.inputPerMTok ||
+        built.outputPerMTok !== d.outputPerMTok ||
+        built.contextWindow !== d.contextWindow ||
+        built.provider !== d.provider ||
+        built.tier !== d.tier ||
+        (d.notes ?? "") !== pricingNotes(built);
+      if (differs) {
+        overrides[d.key] = {
+          inputPerMTok: d.inputPerMTok,
+          outputPerMTok: d.outputPerMTok,
+          contextWindow: d.contextWindow,
+          provider: d.provider,
+          tier: d.tier,
+          ...(d.notes ? { notes: d.notes } : {}),
+        };
+      }
+    }
+    t.saveConfig({ overrides });
+    t.closePanel();
+  };
+
+  if (!t.isPanelOpen) return null;
+
+  return (
+    <>
+      <div
+        role="dialog"
+        aria-label="Model rates"
+        onClick={t.closePanel}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(10, 10, 11, 0.45)",
+          zIndex: 1200,
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "center",
+          padding: "48px 16px",
+          overflowY: "auto",
+        }}
+      >
+        <div
+          ref={dialogRef}
+          tabIndex={-1}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: "var(--surface)",
+            borderRadius: 12,
+            boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+            maxWidth: 980,
+            width: "100%",
+            padding: 24,
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+          }}
+        >
+          <Flex alignItems="flex-start" justifyContent="space-between" gap={16}>
+            <Flex flexDirection="column" gap={4}>
+              <Heading level={2} style={{ fontSize: 18, fontWeight: 700 }}>
+                Model rates
+              </Heading>
+              <Text style={{ fontSize: 12, color: "var(--text-3)" }}>
+                Edit the per-1M-token rates the app uses to estimate Bedrock
+                spend. Changes save org-wide — every user of this app sees the
+                same numbers.
+              </Text>
+            </Flex>
+            <button
+              ref={closeBtnRef}
+              type="button"
+              aria-label="Close"
+              className="aiobs-icon-btn"
+              onClick={t.closePanel}
+              style={{ padding: "2px 8px", borderRadius: 6, fontSize: 18, color: "var(--text-3)" }}
+            >
+              ×
+            </button>
+          </Flex>
+
+          <Flex alignItems="center" justifyContent="space-between" gap={8}>
+            {!showAdd ? (
+              <Button variant="default" onClick={() => setShowAdd(true)}>
+                + Add model
+              </Button>
+            ) : (
+              <span />
+            )}
+            <button
+              type="button"
+              onClick={() => setConfirmRevert(true)}
+              style={{ all: "unset", cursor: "pointer", fontSize: 12, color: "var(--text-3)", textDecoration: "underline" }}
+            >
+              Revert to defaults
+            </button>
+          </Flex>
+
+          {showAdd && (
+            <AddModelForm existingKeys={existingKeys} onCancel={() => setShowAdd(false)} onAdd={handleAdd} />
+          )}
+
+          <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+            <div
+              style={{
+                padding: "10px 12px",
+                background: "var(--surface-2)",
+                display: "grid",
+                gridTemplateColumns: "minmax(180px, 1.5fr) 110px 110px 130px 110px auto",
+                columnGap: 12,
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "var(--text-3)",
+              }}
+            >
+              <span>Model</span>
+              <span>Input / 1M</span>
+              <span>Output / 1M</span>
+              <span>Context window</span>
+              <span>Tier</span>
+              <span style={{ textAlign: "right" }}>Actions</span>
+            </div>
+            {providers.map((provider) => (
+              <div key={provider}>
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    background: "var(--surface)",
+                    borderTop: "1px solid var(--border)",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    color: "var(--text-2)",
+                  }}
+                >
+                  {provider}
+                </div>
+                {grouped[provider].map((d) => {
+                  const isOverride = Boolean(t.config.overrides[d.key]);
+                  const isCustom = isOverride && !builtIns.has(displayModelKey(d.key));
+                  return (
+                    <PricingRow
+                      key={d.key}
+                      draft={d}
+                      editing={editingKey === d.key}
+                      onChange={handleRowChange}
+                      onEdit={() => setEditingKey(d.key)}
+                      onRevertRow={() => handleRowRevert(d.key)}
+                      isOverride={isOverride}
+                      isCustom={isCustom}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          <Flex justifyContent="flex-end" gap={8}>
+            <Button variant="default" onClick={t.closePanel}>
+              Cancel
+            </Button>
+            <Button variant="accent" disabled={!dirty} onClick={handleSave}>
+              Save
+            </Button>
+          </Flex>
+        </div>
+      </div>
+
+      <RevertConfirm
+        open={confirmRevert}
+        onCancel={() => setConfirmRevert(false)}
+        onConfirm={() => {
+          setConfirmRevert(false);
+          t.resetConfig();
+          t.closePanel();
+        }}
+      />
+    </>
+  );
+};
