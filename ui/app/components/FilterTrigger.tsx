@@ -2,7 +2,8 @@ import React from "react";
 import { useGlobalFilters } from "../scope/GlobalFilterContext";
 
 export interface FilterTriggerProps {
-  /** Span attribute to filter on, e.g. "gen_ai.agent.name". */
+  /** Filterable dimension key to filter on — one of `FILTERABLE_ATTRIBUTES`
+   *  in `../scope/filterableAttributes`, e.g. "identity" or "errorCode". */
   attribute: string;
   /** Raw value(s) to match. For canonical displays (models) pass every raw
    *  variant so all of them are captured. */

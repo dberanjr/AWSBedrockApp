@@ -85,7 +85,7 @@ export interface EmptyStateProps {
   /** Optional decorative icon node — overrides the per-cause default icon. */
   icon?: React.ReactNode;
   /** Footnote-style hint shown below the description in smaller text. Ideal for
-   *  naming the exact attribute to emit (e.g. gen_ai.usage.input_tokens). */
+   *  naming the exact field to enable (e.g. Bedrock model-invocation logging). */
   hint?: React.ReactNode;
   actions?: EmptyStateAction[];
   /** Render bare (no Surface frame) when nesting inside an already-framed panel. */
