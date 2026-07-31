@@ -3,7 +3,7 @@
   "environmentUrl": "https://due93336.apps.dynatrace.com/",
   "app": {
     "name": "AWS Bedrock Observability App",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Runtime observability, cost & usage, and access governance for AWS Bedrock",
     "id": "my.aws.bedrock.observability.app",
     "scopes": [

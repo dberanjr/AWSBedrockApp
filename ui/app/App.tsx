@@ -1,4 +1,4 @@
-import { PageLayout } from "@dynatrace/strato-components/layouts";
+import { Page } from "@dynatrace/strato-components-preview/layouts";
 import { SegmentsProvider } from "@dynatrace/strato-components/filters";
 import React from "react";
 import { Route, Routes } from "react-router-dom";
@@ -34,12 +34,12 @@ export const App = () => {
     <GlobalFilterProvider>
     <ScanReportProvider>
       <ThemeStyles />
-      <PageLayout>
-        <PageLayout.Header>
+      <Page>
+        <Page.Header>
           <Header />
           <GlobalFilterStrip />
-        </PageLayout.Header>
-        <PageLayout.Content>
+        </Page.Header>
+        <Page.Main>
           <div
             style={{
               display: "flex",
@@ -59,8 +59,8 @@ export const App = () => {
             </div>
             <AppFooter />
           </div>
-        </PageLayout.Content>
-      </PageLayout>
+        </Page.Main>
+      </Page>
       <TweaksPanel />
       <ModelPricingPanel />
       <ColorBlindFilters />
