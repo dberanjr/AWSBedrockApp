@@ -1,6 +1,6 @@
 {
   "$schema": "./.dt-app/app.config.schema.json",
-  "environmentUrl": "https://your-tenant.apps.dynatrace.com/",
+  "environmentUrl": "https://due93336.apps.dynatrace.com/",
   "app": {
     "name": "AWS Bedrock Observability App",
     "version": "0.1.0",
