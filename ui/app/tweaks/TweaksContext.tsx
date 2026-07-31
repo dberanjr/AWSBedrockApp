@@ -77,6 +77,17 @@ export interface TweaksState {
   chartCurve: ChartCurve;
   chartLabels: ChartLabels;
   colorBlindFilter: ColorBlindFilter;
+  /**
+   * App-wide: show canned demo data instead of querying Grail at all, on
+   * every tab (except Telemetry, which always audits real telemetry — see
+   * TelemetryPage). A persistent banner reminds the user this isn't real
+   * data. Distinct from the automatic per-tab "no telemetry detected, showing
+   * example data" fallback (see RuntimePage/GovernancePage's `showExample`),
+   * which kicks in on its own when a tab's own data genuinely comes back
+   * empty — this toggle forces the SAME example data on unconditionally,
+   * even when real telemetry exists (for demos/screenshots).
+   */
+  showDemoData: boolean;
   /** Per-tab custom configuration (see PageConfig). */
   pageConfig: PageConfig;
 }
@@ -89,6 +100,7 @@ export const DEFAULT_TWEAKS: TweaksState = {
   chartCurve: "linear",
   chartLabels: "none",
   colorBlindFilter: "none",
+  showDemoData: false,
   pageConfig: {
     showRawModels: false,
     scanStats: "totals",
@@ -104,6 +116,7 @@ export interface TweaksContextValue extends TweaksState {
   setChartCurve: (v: ChartCurve) => void;
   setChartLabels: (v: ChartLabels) => void;
   setColorBlindFilter: (v: ColorBlindFilter) => void;
+  setShowDemoData: (v: boolean) => void;
   setShowRawModels: (v: boolean) => void;
   setScanStats: (v: ScanStatsMode) => void;
   setShowSamplingScanLimit: (v: boolean) => void;
@@ -175,6 +188,7 @@ export const TweaksProvider = ({
       setChartCurve: merge("chartCurve"),
       setChartLabels: merge("chartLabels"),
       setColorBlindFilter: merge("colorBlindFilter"),
+      setShowDemoData: merge("showDemoData"),
       setShowRawModels: mergePage("showRawModels"),
       setScanStats: mergePage("scanStats"),
       setShowSamplingScanLimit: mergePage("showSamplingScanLimit"),

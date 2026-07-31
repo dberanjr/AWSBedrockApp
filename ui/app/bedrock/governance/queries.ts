@@ -163,7 +163,10 @@ export const buildAccountRegionQuery = (s: GovScope): string =>
  * exact blind spot the Reconciliation card exists to catch.
  */
 export const buildGovFacetsQuery = (timeframe: Timeframe): string =>
-  `${govBase({ timeframe, accounts: [], conditions: [] })}
+  // showExample is irrelevant here — this throwaway scope object only exists
+  // to satisfy govBase's parameter type; the caller (useGovernanceFacets)
+  // decides whether to run this query at all.
+  `${govBase({ timeframe, accounts: [], conditions: [], showExample: false })}
 | filter isNotNull(accountId)
 | summarize accounts = collectDistinct(accountId)`;
 

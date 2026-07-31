@@ -335,6 +335,28 @@ export const TweaksPanel = () => {
           </Flex>
 
           <Flex flexDirection="column" gap={12}>
+            <SectionLabel>Data source</SectionLabel>
+            <Flex flexDirection="column" gap={6}>
+              <FieldLabel>Show Demo Data</FieldLabel>
+              <Segmented
+                ariaLabel="Show demo data"
+                options={ON_OFF_OPTIONS}
+                value={t.showDemoData ? "on" : "off"}
+                onChange={(v) => t.setShowDemoData(v === "on")}
+              />
+              <Text style={{ fontSize: 11, color: "var(--text-3)" }}>
+                Shows realistic canned data on every tab instead of querying Grail —
+                useful for demos and screenshots. A banner stays visible at the top of
+                the app the whole time this is on. Every tab already falls back to
+                labelled example data on its own when it finds no real telemetry; this
+                forces that same look everywhere, even where real data exists. The
+                Telemetry tab is never affected — it always audits your tenant's real
+                telemetry.
+              </Text>
+            </Flex>
+          </Flex>
+
+          <Flex flexDirection="column" gap={12}>
             <SectionLabel>Appearance</SectionLabel>
             <Flex flexDirection="column" gap={6}>
               <FieldLabel>Theme</FieldLabel>

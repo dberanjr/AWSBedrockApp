@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Flex } from "@dynatrace/strato-components/layouts";
 import { Heading, Text } from "@dynatrace/strato-components/typography";
+import { useTweaks } from "../../tweaks/TweaksContext";
 import { StatTile, type StatTileTone } from "../../components/StatTile";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorBanner } from "../../components/ErrorState";
@@ -53,6 +54,7 @@ const SectionAnchor = ({ section }: { section: AuditSection }) => (
 
 export const TelemetryPage = () => {
   const { sections, overview, isLoading, isEmpty, error } = useTelemetryAudit();
+  const { showDemoData } = useTweaks();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [active, setActive] = useState<{ section: AuditSection; field: FieldResult } | null>(null);
 
@@ -84,6 +86,12 @@ export const TelemetryPage = () => {
             </Text>
           </Flex>
         </Flex>
+        {showDemoData && (
+          <Text style={{ fontSize: 11.5, color: "var(--text-3)", fontStyle: "italic" }}>
+            Show Demo Data is on for the Runtime and Governance tabs — this coverage audit always
+            reflects your tenant&apos;s real telemetry, regardless of that setting.
+          </Text>
+        )}
       </Flex>
 
       {error && <ErrorBanner error={error} />}

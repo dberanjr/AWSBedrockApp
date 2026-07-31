@@ -28,9 +28,22 @@ import { useScopedDql } from "../scope/useScopedDql";
 import { useScope } from "../scope/ScopeContext";
 import { useGlobalFilters } from "../scope/GlobalFilterContext";
 import { useSampling, extrapolate, extrapolateSeries } from "../scope/SamplingContext";
+import { useTweaks } from "../tweaks/TweaksContext";
 import { toNum } from "../data/format";
 import type { Timeframe } from "../scope/types";
 import type { BedrockScope } from "./types";
+import {
+  DEMO_OVERVIEW_TOTALS,
+  DEMO_DAILY_COST,
+  DEMO_COST_SUMMARY,
+  DEMO_COST_SPARK,
+  DEMO_ACCOUNT_COST_ROWS,
+  DEMO_AGENT_SESSION_ROWS,
+  DEMO_PERF_ROWS,
+  DEMO_PERF_SERIES,
+  DEMO_TPM_PEAK_PCT,
+  DEMO_FACETS,
+} from "./demoData";
 import {
   buildBedrockOverviewQuery,
   buildBedrockDailyCostQuery,
@@ -63,10 +76,19 @@ const OPTS = { ignoreSegments: true, staleTime: 60_000 } as const;
  *  fidelity so the option lists / availability check see the whole population. */
 const FACET_OPTS = { ...OPTS, samplingRatioOverride: 1 } as const;
 
-/** Cheap existence probe: any bedrock log group in the last 24h. */
+/**
+ * Cheap existence probe: any bedrock log group in the last 24h. Used by
+ * RuntimePage to DECIDE `showExample` in the first place, so this can't read
+ * `scope.showExample` itself (it doesn't even take a scope) — instead it
+ * reads the global "Show Demo Data" Tweak directly and, when it's on, skips
+ * the query entirely and reports available so the caller never bothers
+ * probing real telemetry it doesn't care about.
+ */
 export const useBedrockAvailable = (): { available: boolean; isLoading: boolean } => {
+  const { showDemoData } = useTweaks();
   const q = `fetch logs, from: now()-24h\n| filter contains(dt.da.aws.log_group, "bedrock")\n| limit 1\n| fields timestamp`;
-  const res = useScopedDql<ResultRecord>(q, FACET_OPTS);
+  const res = useScopedDql<ResultRecord>(q, { ...FACET_OPTS, enabled: !showDemoData });
+  if (showDemoData) return { available: true, isLoading: false };
   return { available: (res.data?.records?.length ?? 0) > 0, isLoading: res.isLoading };
 };
 
@@ -75,8 +97,14 @@ export const useBedrockOverview = (
 ): { totals: OverviewTotals; isLoading: boolean; error?: Error } => {
   const { filters } = useGlobalFilters();
   const { samplingRatio } = useSampling();
-  const res = useScopedDql<ResultRecord>(buildBedrockOverviewQuery(scope, filters.conditions), OPTS);
+  const res = useScopedDql<ResultRecord>(buildBedrockOverviewQuery(scope, filters.conditions), {
+    ...OPTS,
+    enabled: !scope.showExample,
+  });
   return useMemo(() => {
+    if (scope.showExample) {
+      return { totals: DEMO_OVERVIEW_TOTALS, isLoading: false, error: undefined };
+    }
     const totals = parseOverview(res.data?.records ?? []);
     return {
       totals: {
@@ -92,7 +120,7 @@ export const useBedrockOverview = (
       isLoading: res.isLoading,
       error: res.error ?? undefined,
     };
-  }, [res.data, res.isLoading, res.error, samplingRatio]);
+  }, [scope.showExample, res.data, res.isLoading, res.error, samplingRatio]);
 };
 
 const scaleCostSummary = (summary: BedrockCostSummary, ratio: number): BedrockCostSummary =>
@@ -128,16 +156,19 @@ export const useBedrockCost = (
   const { samplingRatio } = useSampling();
   const res = useScopedDql<ResultRecord>(
     buildBedrockDailyCostQuery(scope, undefined, filters.conditions),
-    OPTS,
+    { ...OPTS, enabled: !scope.showExample },
   );
   return useMemo(() => {
+    if (scope.showExample) {
+      return { daily: DEMO_DAILY_COST, summary: DEMO_COST_SUMMARY, isLoading: false };
+    }
     const { daily, summary } = foldDailyCost(res.data?.records ?? []);
     return {
       daily: scaleDaily(daily, samplingRatio),
       summary: scaleCostSummary(summary, samplingRatio),
       isLoading: res.isLoading,
     };
-  }, [res.data, res.isLoading, samplingRatio]);
+  }, [scope.showExample, res.data, res.isLoading, samplingRatio]);
 };
 
 /** Finer-grained cost series for the Total Spend hero sparkline only — same
@@ -151,9 +182,12 @@ export const useBedrockCostSpark = (
   const { samplingRatio } = useSampling();
   const res = useScopedDql<ResultRecord>(
     buildBedrockDailyCostQuery(scope, bedrockSparkIntervalSec(scope.timeframe.from), filters.conditions),
-    OPTS,
+    { ...OPTS, enabled: !scope.showExample },
   );
   return useMemo(() => {
+    if (scope.showExample) {
+      return { values: DEMO_COST_SPARK.values, labels: DEMO_COST_SPARK.labels, isLoading: false };
+    }
     const { daily } = foldDailyCost(res.data?.records ?? []);
     return {
       values: extrapolateSeries(
@@ -163,7 +197,7 @@ export const useBedrockCostSpark = (
       labels: daily.map((d) => d.day),
       isLoading: res.isLoading,
     };
-  }, [res.data, res.isLoading, samplingRatio]);
+  }, [scope.showExample, res.data, res.isLoading, samplingRatio]);
 };
 
 /** Per-account cost (D4 by-account breakdown). `buildAccountModelQuery`
@@ -177,18 +211,20 @@ export const useBedrockAccountCost = (
   const { samplingRatio } = useSampling();
   const res = useScopedDql<ResultRecord>(
     buildAccountModelQuery(scope, filters.conditions),
-    OPTS,
+    { ...OPTS, enabled: !scope.showExample },
   );
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    if (scope.showExample) {
+      return { rows: DEMO_ACCOUNT_COST_ROWS, isLoading: false };
+    }
+    return {
       rows: parseAccountCost((res.data?.records ?? []) as Record<string, unknown>[]).map((r) => ({
         ...r,
         cost: r.cost * samplingRatio,
       })),
       isLoading: res.isLoading,
-    }),
-    [res.data, res.isLoading, samplingRatio],
-  );
+    };
+  }, [scope.showExample, res.data, res.isLoading, samplingRatio]);
 };
 
 export const useAgentSessions = (
@@ -196,9 +232,15 @@ export const useAgentSessions = (
 ): { rows: AgentSessionRow[]; isLoading: boolean } => {
   const { filters } = useGlobalFilters();
   const { samplingRatio } = useSampling();
-  const res = useScopedDql<ResultRecord>(buildAgentSessionsQuery(scope, filters.conditions), OPTS);
-  return useMemo(
-    () => ({
+  const res = useScopedDql<ResultRecord>(buildAgentSessionsQuery(scope, filters.conditions), {
+    ...OPTS,
+    enabled: !scope.showExample,
+  });
+  return useMemo(() => {
+    if (scope.showExample) {
+      return { rows: DEMO_AGENT_SESSION_ROWS, isLoading: false };
+    }
+    return {
       rows: parseAgentSessions((res.data?.records ?? []) as Record<string, unknown>[]).map((r) => ({
         ...r,
         invocations: r.invocations * samplingRatio,
@@ -208,9 +250,8 @@ export const useAgentSessions = (
         // cachePct / errorRate are ratios of two equally-scaled sums — sampling-invariant, left as-is.
       })),
       isLoading: res.isLoading,
-    }),
-    [res.data, res.isLoading, samplingRatio],
-  );
+    };
+  }, [scope.showExample, res.data, res.isLoading, samplingRatio]);
 };
 
 export const useBedrockPerf = (
@@ -221,9 +262,23 @@ export const useBedrockPerf = (
   series: ReturnType<typeof aggregatePerfSeries>;
   isLoading: boolean;
 } => {
-  const perf = useScopedDql<ResultRecord>(buildBedrockPerfByModelQuery(scope.timeframe), OPTS);
-  const tpm = useScopedDql<ResultRecord>(buildBedrockTpmQuery(scope.timeframe), OPTS);
+  const perf = useScopedDql<ResultRecord>(buildBedrockPerfByModelQuery(scope.timeframe), {
+    ...OPTS,
+    enabled: !scope.showExample,
+  });
+  const tpm = useScopedDql<ResultRecord>(buildBedrockTpmQuery(scope.timeframe), {
+    ...OPTS,
+    enabled: !scope.showExample,
+  });
   return useMemo(() => {
+    if (scope.showExample) {
+      return {
+        rows: DEMO_PERF_ROWS,
+        tpmPeakPct: DEMO_TPM_PEAK_PCT,
+        series: DEMO_PERF_SERIES,
+        isLoading: false,
+      };
+    }
     const perfRecords = (perf.data?.records ?? []) as Record<string, unknown>[];
     const tpmRecords = (tpm.data?.records ?? []) as Record<string, unknown>[];
     const rows = parsePerfByModel(perfRecords);
@@ -237,7 +292,7 @@ export const useBedrockPerf = (
       series: aggregatePerfSeries(perfRecords, tpmRecords),
       isLoading: perf.isLoading || tpm.isLoading,
     };
-  }, [perf.data, perf.isLoading, tpm.data, tpm.isLoading]);
+  }, [scope.showExample, perf.data, perf.isLoading, tpm.data, tpm.isLoading]);
 };
 
 /**
@@ -246,16 +301,26 @@ export const useBedrockPerf = (
  * `buildBedrockFacetsQuery`, which never applies the current account/model
  * selection — see that query's doc comment for why a self-scoped facets query
  * would make each picker prune its own options.
+ *
+ * `showExample` is a separate parameter (rather than living on a scope object,
+ * since this hook doesn't take one) so the Account/Model pickers stay
+ * populated and clickable in demo mode too, not just the tiles.
  */
-export const useBedrockFacets = (timeframe: Timeframe): BedrockFacets & { isLoading: boolean } => {
-  const res = useScopedDql<ResultRecord>(buildBedrockFacetsQuery(timeframe), FACET_OPTS);
-  return useMemo(
-    () => ({
-      ...parseFacets((res.data?.records ?? []) as Record<string, unknown>[]),
+export const useBedrockFacets = (
+  timeframe: Timeframe,
+  showExample: boolean,
+): BedrockFacets & { isLoading: boolean } => {
+  const res = useScopedDql<ResultRecord>(buildBedrockFacetsQuery(timeframe), {
+    ...FACET_OPTS,
+    enabled: !showExample,
+  });
+  return useMemo(() => {
+    if (showExample) return { ...DEMO_FACETS, isLoading: false };
+    return {
+      ...parseFacets(res.data?.records ?? []),
       isLoading: res.isLoading,
-    }),
-    [res.data, res.isLoading],
-  );
+    };
+  }, [showExample, res.data, res.isLoading]);
 };
 
 export { useScope }; // re-export for page convenience

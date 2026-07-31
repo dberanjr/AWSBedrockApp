@@ -13,6 +13,7 @@ const scope = {
   timeframe: { from: "now()-7d", to: "now()" },
   accounts: [] as string[],
   conditions: [],
+  showExample: false,
 };
 
 describe("regionCountry", () => {

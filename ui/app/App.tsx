@@ -19,6 +19,7 @@ import { ScanReportProvider } from "./scope/ScanReportContext";
 import { ThemeStyles } from "./theme/ThemeStyles";
 import { TweaksProvider } from "./tweaks/TweaksContext";
 import { TweaksPanel } from "./tweaks/TweaksPanel";
+import { DemoModeBanner } from "./tweaks/DemoModeBanner";
 import { ColorBlindFilters } from "./tweaks/ColorBlindFilters";
 import { ModelPricingProvider } from "./pricing/ModelPricingContext";
 import { ModelPricingPanel } from "./pricing/ModelPricingPanel";
@@ -36,6 +37,7 @@ export const App = () => {
       <ThemeStyles />
       <Page>
         <Page.Header>
+          <DemoModeBanner />
           <Header />
           <GlobalFilterStrip />
         </Page.Header>

@@ -4,7 +4,8 @@ import { Heading, Text } from "@dynatrace/strato-components/typography";
 import { Skeleton } from "@dynatrace/strato-components/content";
 import { useScope } from "../../scope/ScopeContext";
 import { useGlobalFilters } from "../../scope/GlobalFilterContext";
-import { EmptyState } from "../../components/EmptyState";
+import { useTweaks } from "../../tweaks/TweaksContext";
+import { ExampleDataNotice } from "../../components/ExampleDataNotice";
 import { ScopeSelectors, type PickerOption } from "../../components/ScopeSelectors";
 import { fmtCount } from "../../data/format";
 import type { BedrockScope } from "../../bedrock/types";
@@ -38,7 +39,14 @@ const SECTION_LABEL: React.CSSProperties = {
 export const RuntimePage = () => {
   const { scope } = useScope();
   const { registerResetHandler } = useGlobalFilters();
+  const { showDemoData } = useTweaks();
+  // The availability probe always runs for real (unless demo mode is already
+  // forced on, in which case its result is irrelevant) — see
+  // useBedrockAvailable's own doc comment.
   const { available, isLoading: availLoading } = useBedrockAvailable();
+  // Only treat "no telemetry" as true once the probe has actually resolved —
+  // otherwise every page would flash example data for a moment on load.
+  const showExample = showDemoData || (!availLoading && !available);
 
   const [accounts, setAccounts] = useState<string[]>([]);
   const [models, setModels] = useState<string[]>([]);
@@ -55,15 +63,19 @@ export const RuntimePage = () => {
   }, [registerResetHandler]);
 
   const bedrockScope: BedrockScope = useMemo(
-    () => ({ timeframe: scope.timeframe, accounts, models }),
-    [scope.timeframe, accounts, models],
+    () => ({ timeframe: scope.timeframe, accounts, models, showExample }),
+    [scope.timeframe, accounts, models, showExample],
   );
 
   // Facet options for the Account/Model pickers — deliberately unscoped by the
   // CURRENT account/model selection (see useBedrockFacets' doc comment): if it
   // weren't, picking one model would prune every other model out of its own
-  // picker's option list.
-  const { accounts: accountOpts, modelGroups, isLoading: facetsLoading } = useBedrockFacets(scope.timeframe);
+  // picker's option list. In example mode, returns a canned demo account/model
+  // list so the pickers stay populated and usable.
+  const { accounts: accountOpts, modelGroups, isLoading: facetsLoading } = useBedrockFacets(
+    scope.timeframe,
+    showExample,
+  );
 
   const accountOptions = useMemo<PickerOption[]>(
     () => accountOpts.map((a) => ({ value: a, label: a })),
@@ -95,28 +107,9 @@ export const RuntimePage = () => {
 
   const { totals } = useBedrockOverview(bedrockScope);
 
-  if (!availLoading && !available) {
-    return (
-      <Flex flexDirection="column" padding={24}>
-        <EmptyState
-          cause="no-instrumentation"
-          title="AWS Bedrock"
-          description="No Bedrock ModelInvocationLog activity was found in the last 24 hours."
-          hint={
-            <>
-              Enable Bedrock model-invocation logging to CloudWatch (Amazon Bedrock console → Settings
-              → Model invocation logging) so <code>dt.da.aws.log_group</code> carries a{" "}
-              <code>bedrock</code> log group with <code>ModelInvocationLog</code> entries, then widen
-              the timeframe if activity is recent.
-            </>
-          }
-        />
-      </Flex>
-    );
-  }
-
   return (
     <Flex flexDirection="column" gap={16} padding={24}>
+      {showExample && !showDemoData && <ExampleDataNotice tabLabel="AWS Bedrock" />}
       <Flex justifyContent="space-between" alignItems="flex-start" gap={16} style={{ flexWrap: "wrap" }}>
         <Flex flexDirection="column" gap={4} style={{ minWidth: 0 }}>
           <Heading level={1} style={{ fontSize: 20, fontWeight: 700 }}>
@@ -145,7 +138,7 @@ export const RuntimePage = () => {
         {fmtCount(totals.sessions)} sessions · source: Logs + Metrics
       </Text>
 
-      {availLoading ? (
+      {availLoading && !showDemoData ? (
         <Skeleton style={{ height: 120, borderRadius: 8 }} />
       ) : (
         <BedrockHero scope={bedrockScope} />
@@ -165,7 +158,7 @@ export const RuntimePage = () => {
       <BedrockLatencyTrends scope={bedrockScope} />
       <BedrockPerModelSummary scope={bedrockScope} />
 
-      <BedrockGuardrailsSummary />
+      <BedrockGuardrailsSummary showExample={showExample} />
       <BedrockFindings scope={bedrockScope} />
     </Flex>
   );

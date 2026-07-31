@@ -3,7 +3,8 @@ import { Flex } from "@dynatrace/strato-components/layouts";
 import { Heading, Text } from "@dynatrace/strato-components/typography";
 import { useScope } from "../../scope/ScopeContext";
 import { useGlobalFilters } from "../../scope/GlobalFilterContext";
-import { EmptyState } from "../../components/EmptyState";
+import { useTweaks } from "../../tweaks/TweaksContext";
+import { ExampleDataNotice } from "../../components/ExampleDataNotice";
 import { ScopeSelectors, type PickerOption } from "../../components/ScopeSelectors";
 import type { GovScope } from "../../bedrock/governance/types";
 import { useGovKpis, useGovernanceAvailable, useGovernanceFacets } from "../../bedrock/governance/useGovernance";
@@ -58,6 +59,7 @@ const SectionHeader = ({ eyebrow, title }: { eyebrow: string; title: string }) =
 export const GovernancePage = () => {
   const { scope: appScope } = useScope();
   const { filters, registerResetHandler } = useGlobalFilters();
+  const { showDemoData } = useTweaks();
   const [accounts, setAccounts] = useState<string[]>([]);
 
   useEffect(() => {
@@ -65,49 +67,33 @@ export const GovernancePage = () => {
     return unregister;
   }, [registerResetHandler]);
 
+  // The availability probe always runs for real (unless demo mode is already
+  // forced on, in which case its result is irrelevant) — see
+  // useGovernanceAvailable's own doc comment. Only treat "no telemetry" as
+  // true once the probe has actually resolved, so the page doesn't flash
+  // example data for a moment on load.
+  const { available, isLoading: probing } = useGovernanceAvailable();
+  const showExample = showDemoData || (!probing && !available);
+
   const scope: GovScope = useMemo(
-    () => ({ timeframe: appScope.timeframe, accounts, conditions: filters.conditions }),
-    [appScope.timeframe, accounts, filters.conditions],
+    () => ({ timeframe: appScope.timeframe, accounts, conditions: filters.conditions, showExample }),
+    [appScope.timeframe, accounts, filters.conditions, showExample],
   );
 
-  const { accounts: accountFacets, isLoading: facetsLoading } = useGovernanceFacets(appScope.timeframe);
+  const { accounts: accountFacets, isLoading: facetsLoading } = useGovernanceFacets(
+    appScope.timeframe,
+    showExample,
+  );
   const accountOptions = useMemo<PickerOption[]>(
     () => accountFacets.map((a) => ({ value: a, label: a })),
     [accountFacets],
   );
 
-  const { available, isLoading: probing } = useGovernanceAvailable();
   const { kpis } = useGovKpis(scope);
-
-  if (!probing && !available) {
-    return (
-      <Flex flexDirection="column" gap={16} style={{ padding: "18px 20px 80px" }}>
-        <Flex flexDirection="column" gap={2}>
-          <Heading level={1} style={{ fontSize: 18, fontWeight: 700 }}>
-            Access & Governance
-          </Heading>
-          <Text style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.4 }}>
-            Identity, access, data-residency and audit — from Bedrock CloudTrail events.
-          </Text>
-        </Flex>
-        <EmptyState
-          cause="no-instrumentation"
-          title="No Bedrock CloudTrail events found"
-          description="This page reads CloudTrail events where cloud.provider is aws and the eventSource is bedrock.amazonaws.com — none was found in the current timeframe."
-          hint="Confirm CloudTrail management and data events are enabled and forwarded to Dynatrace for the account(s) in scope."
-          actions={[
-            {
-              label: "AWS Bedrock logging & monitoring",
-              href: "https://docs.aws.amazon.com/bedrock/latest/userguide/logging-monitoring.html",
-            },
-          ]}
-        />
-      </Flex>
-    );
-  }
 
   return (
     <Flex flexDirection="column" gap={16} style={{ padding: "18px 20px 80px" }}>
+      {showExample && !showDemoData && <ExampleDataNotice tabLabel="Access & Governance" />}
       <Flex justifyContent="space-between" alignItems="flex-start" gap={16} style={{ flexWrap: "wrap" }}>
         <Flex flexDirection="column" gap={6}>
           <Flex flexDirection="column" gap={2}>
