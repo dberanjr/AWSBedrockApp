@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { Flex } from "@dynatrace/strato-components/layouts";
 import { Heading } from "@dynatrace/strato-components/typography";
 import { Skeleton } from "@dynatrace/strato-components/content";
-import { AreaChart } from "../../components/charts/AreaChart";
+import { StackedBarChart } from "../../components/charts/StackedBarChart";
 import { EmptyState } from "../../components/EmptyState";
 import { MaximizablePanel } from "../../components/MaximizablePanel";
 import { DataTable, type DataColumn } from "../../components/DataTable";
@@ -27,14 +27,6 @@ const fmtTimestamp = (iso: string): string => {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${md} ${hh}:${mm}`;
-};
-
-const buildAxisTicks = (labels: string[]): { index: number; label: string }[] => {
-  if (labels.length === 0) return [];
-  const step = Math.max(1, Math.floor(labels.length / 6));
-  return labels
-    .map((label, index) => ({ index, label }))
-    .filter((_, i) => i % step === 0);
 };
 
 const SUBHEAD: React.CSSProperties = { fontSize: 12.5, fontWeight: 600 };
@@ -66,7 +58,7 @@ export const GovSecurityDetail = ({ scope }: GovSecurityDetailProps) => {
   const { timeseries, isLoading: errorsLoading } = useGovErrorsSeries(scope);
   const { rows, isLoading: controlLoading } = useGovControlPlane(scope);
 
-  const areaSeries = useMemo(
+  const stackedSeries = useMemo(
     () =>
       timeseries.series.map((s, i) => ({
         key: s.key,
@@ -76,7 +68,6 @@ export const GovSecurityDetail = ({ scope }: GovSecurityDetailProps) => {
       })),
     [timeseries.series],
   );
-  const axisTicks = useMemo(() => buildAxisTicks(timeseries.labels), [timeseries.labels]);
 
   const errorsInitial = errorsLoading && timeseries.series.length === 0;
   const controlInitial = controlLoading && rows.length === 0;
@@ -87,7 +78,7 @@ export const GovSecurityDetail = ({ scope }: GovSecurityDetailProps) => {
   );
   const stats = [
     { label: "Total errors", value: fmtCount(totalErrors) },
-    { label: "Error codes", value: fmtCount(areaSeries.length) },
+    { label: "Error codes", value: fmtCount(stackedSeries.length) },
     { label: "Control-plane events", value: fmtCount(rows.length) },
   ];
 
@@ -108,7 +99,7 @@ export const GovSecurityDetail = ({ scope }: GovSecurityDetailProps) => {
           </Heading>
           {errorsInitial ? (
             <Skeleton style={{ height: chartH, borderRadius: 8 }} />
-          ) : areaSeries.length === 0 ? (
+          ) : stackedSeries.length === 0 ? (
             <EmptyState
               bare
               title="No errors in this window"
@@ -124,14 +115,12 @@ export const GovSecurityDetail = ({ scope }: GovSecurityDetailProps) => {
               }
             />
           ) : (
-            <AreaChart
-              series={areaSeries}
+            <StackedBarChart
+              series={stackedSeries}
+              labels={timeseries.labels}
               height={chartH}
-              formatLeft={fmtCount}
-              xLabels={timeseries.labels}
-              axisTicks={axisTicks}
+              formatValue={fmtCount}
               ariaLabel="Errors and denials over time by error code"
-              interactiveLegend
             />
           )}
         </Flex>

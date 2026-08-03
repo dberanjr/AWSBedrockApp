@@ -49,6 +49,7 @@ import {
   buildAccountRegionQuery,
   buildReconciliationQuery,
   buildGovFacetsQuery,
+  buildGovernanceAvailableQuery,
 } from "./queries";
 import {
   parseGovKpis,
@@ -372,6 +373,11 @@ export const useGovernanceFacets = (
  * events-based check. Forced exact (`samplingRatioOverride: 1`) so a heavily
  * sampled, low-volume tenant can't produce a false "no instrumentation".
  *
+ * Scoped to the CALLER'S selected timeframe (not a hardcoded rolling window —
+ * the Runtime tab's `useBedrockAvailable` probe had the identical bug: a
+ * fixed lookback here would disagree with every other query on the page and
+ * produce a false "no telemetry" banner over data that's actually populated).
+ *
  * Deliberately reads the global "Show Demo Data" Tweak directly rather than
  * taking a `GovScope` — this probe is what `GovernancePage` uses to DECIDE
  * `scope.showExample` in the first place, so it can't read that field off a
@@ -379,15 +385,11 @@ export const useGovernanceFacets = (
  * real query is skipped entirely and this reports "available" immediately
  * (the probe result is irrelevant once demo mode is forced on).
  */
-export const useGovernanceAvailable = (): { available: boolean; isLoading: boolean } => {
+export const useGovernanceAvailable = (
+  timeframe: Timeframe,
+): { available: boolean; isLoading: boolean } => {
   const { showDemoData } = useTweaks();
-  const q = `fetch events, from: now()-24h
-| filter cloud.provider == "aws"
-| parse data, "JSON:ct"
-| filter ct[eventSource] == "bedrock.amazonaws.com"
-| limit 1
-| fields timestamp`;
-  const res = useScopedDql<ResultRecord>(q, {
+  const res = useScopedDql<ResultRecord>(buildGovernanceAvailableQuery(timeframe), {
     ignoreSegments: true,
     samplingRatioOverride: 1,
     staleTime: 60_000,

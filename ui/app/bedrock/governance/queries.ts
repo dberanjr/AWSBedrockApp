@@ -170,6 +170,17 @@ export const buildGovFacetsQuery = (timeframe: Timeframe): string =>
 | filter isNotNull(accountId)
 | summarize accounts = collectDistinct(accountId)`;
 
+/** Cheap existence probe: any Bedrock CloudTrail event row in the given
+ *  timeframe. Takes only a `Timeframe` — see `useGovernanceAvailable`'s doc
+ *  comment for why this can't take a full `GovScope`. */
+export const buildGovernanceAvailableQuery = (timeframe: Timeframe): string =>
+  `fetch events, from: ${dqlTimeArg(timeframe.from)}, to: ${dqlTimeArg(timeframe.to ?? "now()")}
+| filter cloud.provider == "aws"
+| parse data, "JSON:ct"
+| filter ct[eventSource] == "bedrock.amazonaws.com"
+| limit 1
+| fields timestamp`;
+
 /**
  * Reconciliation: ModelInvocationLog metering count vs CloudTrail invoke-event
  * count. A gap flags a logging blind spot — calls Bedrock accepted that never

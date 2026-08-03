@@ -30,6 +30,7 @@ import { useGlobalFilters } from "../scope/GlobalFilterContext";
 import { useSampling, extrapolate, extrapolateSeries } from "../scope/SamplingContext";
 import { useTweaks } from "../tweaks/TweaksContext";
 import { toNum } from "../data/format";
+import { pickChartIntervalSec } from "../scope/chartInterval";
 import type { Timeframe } from "../scope/types";
 import type { BedrockScope } from "./types";
 import {
@@ -37,6 +38,8 @@ import {
   DEMO_DAILY_COST,
   DEMO_COST_SUMMARY,
   DEMO_COST_SPARK,
+  DEMO_ERROR_RATE_SPARK,
+  DEMO_SESSIONS_SPARK,
   DEMO_ACCOUNT_COST_ROWS,
   DEMO_AGENT_SESSION_ROWS,
   DEMO_PERF_ROWS,
@@ -47,10 +50,12 @@ import {
 import {
   buildBedrockOverviewQuery,
   buildBedrockDailyCostQuery,
+  buildBedrockAvailableQuery,
+  buildBedrockErrorRateSparkQuery,
   buildAgentSessionsQuery,
+  buildAgentSessionsSparkQuery,
   buildAccountModelQuery,
   buildBedrockFacetsQuery,
-  bedrockSparkIntervalSec,
 } from "./queries";
 import { buildBedrockPerfByModelQuery, buildBedrockTpmQuery } from "./metricQueries";
 import {
@@ -66,7 +71,7 @@ import {
   type AccountCostRow,
   type BedrockFacets,
 } from "./parse";
-import { foldDailyCost, type BedrockDailyCostPoint } from "./series";
+import { foldDailyCost, foldErrorRateSpark, foldSessionsSpark, type BedrockDailyCostPoint } from "./series";
 import type { BedrockCostSummary } from "./cost";
 
 /** Log/metric queries bypass Segments (see file doc comment); react-query
@@ -77,17 +82,25 @@ const OPTS = { ignoreSegments: true, staleTime: 60_000 } as const;
 const FACET_OPTS = { ...OPTS, samplingRatioOverride: 1 } as const;
 
 /**
- * Cheap existence probe: any bedrock log group in the last 24h. Used by
- * RuntimePage to DECIDE `showExample` in the first place, so this can't read
- * `scope.showExample` itself (it doesn't even take a scope) — instead it
+ * Cheap existence probe: any bedrock log group row in the CURRENTLY SELECTED
+ * timeframe (not a hardcoded rolling window — a fixed lookback here would
+ * disagree with every other query on the page whenever the user picks a
+ * different range, producing a false "no telemetry" banner over data that's
+ * actually populated). Takes only a `Timeframe` (not the full `BedrockScope`)
+ * since this is what RuntimePage uses to DECIDE `showExample` in the first
+ * place — reading `scope.showExample` here would be circular. Instead it
  * reads the global "Show Demo Data" Tweak directly and, when it's on, skips
  * the query entirely and reports available so the caller never bothers
  * probing real telemetry it doesn't care about.
  */
-export const useBedrockAvailable = (): { available: boolean; isLoading: boolean } => {
+export const useBedrockAvailable = (
+  timeframe: Timeframe,
+): { available: boolean; isLoading: boolean } => {
   const { showDemoData } = useTweaks();
-  const q = `fetch logs, from: now()-24h\n| filter contains(dt.da.aws.log_group, "bedrock")\n| limit 1\n| fields timestamp`;
-  const res = useScopedDql<ResultRecord>(q, { ...FACET_OPTS, enabled: !showDemoData });
+  const res = useScopedDql<ResultRecord>(buildBedrockAvailableQuery(timeframe), {
+    ...FACET_OPTS,
+    enabled: !showDemoData,
+  });
   if (showDemoData) return { available: true, isLoading: false };
   return { available: (res.data?.records?.length ?? 0) > 0, isLoading: res.isLoading };
 };
@@ -171,17 +184,20 @@ export const useBedrockCost = (
   }, [scope.showExample, res.data, res.isLoading, samplingRatio]);
 };
 
-/** Finer-grained cost series for the Total Spend hero sparkline only — same
- *  fold as {@link useBedrockCost} but at {@link bedrockSparkIntervalSec} so the
- *  spark reads as a smooth trend, independent of the (coarser, daily) cost bar
- *  chart. Returns just the per-bucket actual spend + day labels. */
+/** Finer-grained cost series for the Total Spend hero AND Est cost KPI tile
+ *  sparklines — same fold as {@link useBedrockCost} but at
+ *  {@link pickChartIntervalSec}, the SAME ladder every metric-backed KPI
+ *  sparkline on this page uses, so every chart in the row reads at identical
+ *  granularity (independent of the deliberately coarser daily cost bar
+ *  chart, which stays on {@link bedrockCostIntervalSec} so its columns don't
+ *  overflow). Returns just the per-bucket actual spend + day labels. */
 export const useBedrockCostSpark = (
   scope: BedrockScope,
 ): { values: number[]; labels: string[]; isLoading: boolean } => {
   const { filters } = useGlobalFilters();
   const { samplingRatio } = useSampling();
   const res = useScopedDql<ResultRecord>(
-    buildBedrockDailyCostQuery(scope, bedrockSparkIntervalSec(scope.timeframe.from), filters.conditions),
+    buildBedrockDailyCostQuery(scope, pickChartIntervalSec(scope.timeframe.from), filters.conditions),
     { ...OPTS, enabled: !scope.showExample },
   );
   return useMemo(() => {
@@ -198,6 +214,47 @@ export const useBedrockCostSpark = (
       isLoading: res.isLoading,
     };
   }, [scope.showExample, res.data, res.isLoading, samplingRatio]);
+};
+
+/** Bucketed error-rate series for the "Error rate" KPI tile's sparkline — a
+ *  ratio of two equally-extrapolated sums (see `foldErrorRateSpark`), so no
+ *  sampling-ratio scaling is applied here either. */
+export const useBedrockErrorRateSpark = (
+  scope: BedrockScope,
+): { values: number[]; labels: string[]; isLoading: boolean } => {
+  const { filters } = useGlobalFilters();
+  const res = useScopedDql<ResultRecord>(
+    buildBedrockErrorRateSparkQuery(scope, undefined, filters.conditions),
+    { ...OPTS, enabled: !scope.showExample },
+  );
+  return useMemo(() => {
+    if (scope.showExample) {
+      return { values: DEMO_ERROR_RATE_SPARK.values, labels: DEMO_ERROR_RATE_SPARK.labels, isLoading: false };
+    }
+    const { values, labels } = foldErrorRateSpark(res.data?.records ?? []);
+    return { values, labels, isLoading: res.isLoading };
+  }, [scope.showExample, res.data, res.isLoading]);
+};
+
+/** Bucketed distinct-session-count series for the "Sessions" KPI tile's
+ *  sparkline. Deliberately NOT extrapolated by the sampling ratio — same rule
+ *  as the exact headline Sessions count in `useBedrockOverview` (a
+ *  countDistinct would overcount, not correct, if scaled). */
+export const useAgentSessionsSpark = (
+  scope: BedrockScope,
+): { values: number[]; labels: string[]; isLoading: boolean } => {
+  const { filters } = useGlobalFilters();
+  const res = useScopedDql<ResultRecord>(
+    buildAgentSessionsSparkQuery(scope, undefined, filters.conditions),
+    { ...OPTS, enabled: !scope.showExample },
+  );
+  return useMemo(() => {
+    if (scope.showExample) {
+      return { values: DEMO_SESSIONS_SPARK.values, labels: DEMO_SESSIONS_SPARK.labels, isLoading: false };
+    }
+    const { values, labels } = foldSessionsSpark(res.data?.records ?? []);
+    return { values, labels, isLoading: res.isLoading };
+  }, [scope.showExample, res.data, res.isLoading]);
 };
 
 /** Per-account cost (D4 by-account breakdown). `buildAccountModelQuery`

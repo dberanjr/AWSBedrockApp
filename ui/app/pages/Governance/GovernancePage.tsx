@@ -3,12 +3,13 @@ import { Flex } from "@dynatrace/strato-components/layouts";
 import { Heading, Text } from "@dynatrace/strato-components/typography";
 import { useScope } from "../../scope/ScopeContext";
 import { useGlobalFilters } from "../../scope/GlobalFilterContext";
+import { useAccountNames } from "../../scope/AccountNamesContext";
 import { useTweaks } from "../../tweaks/TweaksContext";
 import { ExampleDataNotice } from "../../components/ExampleDataNotice";
 import { ScopeSelectors, type PickerOption } from "../../components/ScopeSelectors";
 import type { GovScope } from "../../bedrock/governance/types";
 import { useGovKpis, useGovernanceAvailable, useGovernanceFacets } from "../../bedrock/governance/useGovernance";
-import { fmtCount } from "../../data/format";
+import { fmtAccount, fmtCount } from "../../data/format";
 import { GovKpiBand } from "./GovKpiBand";
 import { GovAccessDeniedCard } from "./GovAccessDeniedCard";
 import { GovAnomalousAccessCard } from "./GovAnomalousAccessCard";
@@ -71,8 +72,9 @@ export const GovernancePage = () => {
   // forced on, in which case its result is irrelevant) — see
   // useGovernanceAvailable's own doc comment. Only treat "no telemetry" as
   // true once the probe has actually resolved, so the page doesn't flash
-  // example data for a moment on load.
-  const { available, isLoading: probing } = useGovernanceAvailable();
+  // example data for a moment on load. Scoped to the same timeframe as every
+  // other query on this page, so it can't disagree with them.
+  const { available, isLoading: probing } = useGovernanceAvailable(appScope.timeframe);
   const showExample = showDemoData || (!probing && !available);
 
   const scope: GovScope = useMemo(
@@ -84,9 +86,10 @@ export const GovernancePage = () => {
     appScope.timeframe,
     showExample,
   );
+  const { names: accountNames } = useAccountNames();
   const accountOptions = useMemo<PickerOption[]>(
-    () => accountFacets.map((a) => ({ value: a, label: a })),
-    [accountFacets],
+    () => accountFacets.map((a) => ({ value: a, label: fmtAccount(a, accountNames[a]) || a })),
+    [accountFacets, accountNames],
   );
 
   const { kpis } = useGovKpis(scope);

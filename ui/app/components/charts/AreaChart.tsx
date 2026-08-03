@@ -5,9 +5,10 @@ import { useTweaks, type ChartLabels } from "../../tweaks/TweaksContext";
  * Decide which series indices get an inline value label based on the user's
  * Tweaks pick. Indices reference the original `values` array (nulls passed
  * through transparently). Capped at ~12 labels in `all` mode so a dense
- * series doesn't overlap labels into illegibility.
+ * series doesn't overlap labels into illegibility. Exported so Sparkline can
+ * apply the exact same picking rule for its own (opt-in) value labels.
  */
-const pickLabelIndices = (
+export const pickLabelIndices = (
   values: (number | null)[],
   mode: ChartLabels,
 ): number[] => {
@@ -171,6 +172,13 @@ export interface AreaChartProps {
    * legend if it wants one.
    */
   interactiveLegend?: boolean;
+  /**
+   * Series labels (matching `AreaSeries.label`) that start toggled OFF when
+   * `interactiveLegend` is on — e.g. a min/max band a caller wants collapsed
+   * to just the average by default, still one legend click away. Only
+   * consulted once, on mount; ignored when `interactiveLegend` is false.
+   */
+  initiallyHiddenSeries?: string[];
 }
 
 // Visually-hidden but screen-reader-available. Used for the keyboard cursor
@@ -229,12 +237,13 @@ export const AreaChart = ({
   ariaLabel,
   rightAxisFromLeftMax,
   interactiveLegend,
+  initiallyHiddenSeries,
 }: AreaChartProps) => {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   // Series hidden via the interactive legend (keyed by label). Only consulted
   // when `interactiveLegend` is set; otherwise every series renders.
-  const [hidden, setHidden] = useState<Set<string>>(() => new Set());
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set(initiallyHiddenSeries ?? []));
   // Screen-reader readout for the current keyboard cursor position. Updated
   // ONLY on key nav (never on mouse move) so a pointer sweep doesn't spam the
   // aria-live region.

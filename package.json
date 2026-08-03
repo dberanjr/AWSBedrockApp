@@ -1,6 +1,6 @@
 {
   "name": "aws-bedrock-observability-app",
-  "version": "0.2.1",
+  "version": "0.3.6",
   "description": "Runtime observability, cost & usage, and access governance for AWS Bedrock — a native Dynatrace AppEngine app",
   "scripts": {
     "build:info": "node scripts/build-info.mjs",
@@ -30,6 +30,7 @@
     "@dynatrace-sdk/app-environment": "^1.1.4",
     "@dynatrace-sdk/client-query": "^1.21.2",
     "@dynatrace-sdk/error-handlers": "^1.3.1",
+    "@dynatrace-sdk/http-client": "^1.5.1",
     "@dynatrace-sdk/navigation": "^2.2.0",
     "@dynatrace-sdk/react-hooks": "^1.6.0",
     "@dynatrace-sdk/user-preferences": "^1.1.3",

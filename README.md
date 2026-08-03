@@ -18,13 +18,13 @@ This app does that correlation for you across three tabs — **Runtime Observabi
 
 Reads the Bedrock **ModelInvocationLog** (`fetch logs`, matched on the `dt.da.aws.log_group` / `ModelInvocationLog` marker) and the `cloud.aws.bedrock.*` / `cloud.aws.bedrock_guardrails.*` CloudWatch metric namespaces. Account and Model dropdowns scope the whole tab.
 
-- **Hero** — total estimated spend, a 30-day run-rate projection, a spend sparkline, and up to three computed narrative insights (cost concentration, a latency outlier, prompt-cache savings).
-- **KPI row** — invocations, tokens (including cache-read/write tiers), estimated cost, average latency, time-to-first-token, error rate, peak tokens-per-minute, and session count.
-- **Cost zone** — a stacked cost-by-model-over-time chart with a cache-savings overlay, a cost-share donut, and cost-by-account.
-- **Agent / session table** — the caller identity ARN encodes the session (an agent run, not a human); per-session invocations, tokens, cache-hit rate, cost, P95 latency, and error rate.
+- **Hero** — total estimated spend, a 30-day run-rate projection, a wide spend trend chart with a small date/time axis and optional inline value labels, and up to three computed narrative insights (cost concentration, a latency outlier, prompt-cache savings) shown as icon-led stat rows.
+- **KPI row** — invocations, tokens (including cache-read/write tiers), estimated cost, average latency, time-to-first-token, error rate, peak tokens-per-minute, and session count — every tile's sparkline shares the same time granularity.
+- **Cost zone** — a stacked cost-by-model-over-time chart with a cache-savings overlay, a cost-share donut, and cost-by-account. Model rates are reconciled against the tenant's own cost-tracking dashboard, not just list prices.
+- **Agent / session table** — the caller identity ARN encodes the session (an agent run, not a human), shown in a **User/Agent** column; per-session invocations, tokens, cache-hit rate, cost, P95 latency, and error rate.
 - **Performance zone** — latency and TTFT by model (worst first), peak-TPM headroom, and an explicit error-rate caveat.
 - **Quota & delivery** — per-model `EstimatedTPMQuotaUsage` headroom (an absolute tokens/minute figure, not a percentage) and CloudWatch log-delivery health over time.
-- **Latency trends** — min / avg / max band charts for invocation latency and TTFT.
+- **Latency trends** — min / avg / max band charts for invocation latency and TTFT; only the average line shows by default, with min/max one legend click away.
 - **Per-model summary table**, a **guardrails summary** (`cloud.aws.bedrock_guardrails.*` — intervention rate, coverage; meaningful only where Guardrails is configured), and threshold-based **findings**.
 
 ### Access & Governance
@@ -36,8 +36,8 @@ Reads the Bedrock **ModelInvocationLog** (`fetch logs`, matched on the `dt.da.aw
 - **Access denied** — top identities and actions by `AccessDenied` count.
 - **Data residency** — cross-region inference routing, flagging calls whose actual inference region differs from the request's.
 - **Throttling** — `ThrottlingException` / `TooManyRequestsException` occurrences.
-- **Activity & identity detail** — API-action breakdown, calls-over-time by action, top identities, top source IPs, and an identity × MFA table.
-- **Security detail** — errors/denials over time by error code, plus a control-plane write-event audit table.
+- **Activity & identity detail** — API-action breakdown, a stacked-bar calls-over-time-by-action chart (click a legend entry to isolate/hide an action), top identities, top source IPs, and an identity × MFA table.
+- **Security detail** — a stacked-bar errors/denials-over-time-by-error-code chart (same clickable legend), plus a control-plane write-event audit table.
 - **Reconciliation** — compares the CloudTrail invoke-event count against the ModelInvocationLog metering count to surface logging blind spots.
 
 ### Telemetry (Audit)
@@ -57,8 +57,9 @@ Four sections, each resolved in a single DQL query: **Model Invocation Logs**, *
 - **Filters** — a closed set of Bedrock/CloudTrail dimensions (identity, error code, API action, region, source IP, MFA, read-only) rather than free-text span attributes, applied directly in each query builder after its own JSON-parse step (Bedrock's log/event payloads don't exist as queryable fields until parsed, so generic pre-parse injection isn't possible here). Account and Model have their own dedicated dropdowns instead of living in this list.
 - **Sampling & Scan limit** — the usual Grail cost/fidelity levers (sampling: None / 10 / 100 / 1k / 10k; scan limit: 500 GB / 1 TB / 2 TB / 5 TB), both hideable from the toolbar via a Tweaks toggle without losing their last-set value. Sampling only affects the log- and event-backed numbers — CloudWatch metrics have no sampling concept in DQL — and count/sum aggregates are extrapolated back up while distinct-count security metrics are deliberately left un-extrapolated and flagged "exact only at None."
 - **Cache-aware cost model** — decomposes every invocation into uncached-input / cache-read / cache-write / output tiers and prices each from an **org-wide overrideable** rate table covering Bedrock-native models (Amazon Nova, Titan) plus the third-party vendors Bedrock hosts (Anthropic, Meta, Mistral, DeepSeek, Cohere). A model missing from the table costs a blended rate (never $0), flagged "≈". Edited from the header's **Model Rates** panel — Bedrock-only, no platform selector, since this app only ever prices Bedrock invocations.
+- **Account name resolution** — every AWS account id shown in the app (Account dropdowns, the Agent/session table, cost breakdowns, Governance reconciliation) renders as `Friendly Name (111122223333)`, resolved once per session from the AWS extension's monitoring configuration; falls back to the bare id for any account without a matching connection.
 - **Show Demo Data** — a Tweaks toggle that forces the same realistic canned dataset onto every tab except Telemetry, with a persistent banner and a one-click way to turn it back off. Distinct from the automatic per-tab example-data fallback described above: that one only activates on its own when a tab's real data comes back empty; this one forces it everywhere, on demand, for demos and screenshots.
-- **Tweaks panel** — per-user appearance and display controls: theme, 15 accent colors (plus a custom hex picker), chart style / curve / value-labels, a color-vision-deficiency simulator, raw-vs-normalized model names, scanned-data verbosity, and the Sampling/Scan-limit and Show-Demo-Data toggles above.
+- **Tweaks panel** — per-user appearance and display controls: theme, 15 accent colors (plus a custom hex picker), chart style / curve (smoothing applies to every chart, including the KPI-tile sparklines) / value-labels, a color-vision-deficiency simulator, raw-vs-normalized model names, scanned-data verbosity, and the Sampling/Scan-limit and Show-Demo-Data toggles above.
 - **Per-user persisted settings** — timeframe, sampling ratio, scan limit, Filters, and Tweaks all survive reloads via `state:user-app-states`; Model Rates overrides persist org-wide via `state:app-states`, so every viewer sees the same rates.
 - **Reload / Reset** — Reload invalidates every active query; Reset clears the timeframe, Filters, and each tab's local Account/Model selection back to defaults (Segments and Tweaks are left alone).
 - **Status bar** — scanned bytes vs. budget, query count, a sampling-extrapolation disclosure, a "partial data" chip when a query hits its scan-limit budget (one click raises the limit), and a "last refreshed" / "slowest query" readout.
@@ -122,6 +123,7 @@ Each tab's DQL query builders live next to the hooks and components that use the
   | `storage:filter-segments:read` | Read tenant-defined filter segments |
   | `state:user-app-states:read` / `write` | Per-user state: timeframe, sampling, scan limit, Filters, Tweaks |
   | `state:app-states:read` / `write` | Org-wide state: shared Model Rates overrides |
+  | `extensions:configurations:read` | Resolve AWS account id → friendly connection name |
 
 ## Installation
 
@@ -179,7 +181,7 @@ Pure functions — the cache-aware cost model, CloudTrail event parsing, cross-r
 
 - **React 18** + **TypeScript 5** + **React Router 6**
 - **Dynatrace Strato Design System** (`@dynatrace/strato-components`, `-preview`, `-icons`, `-design-tokens`)
-- **Dynatrace SDK** — `@dynatrace-sdk/react-hooks` (DQL + user/app state), `@dynatrace-sdk/app-environment`
+- **Dynatrace SDK** — `@dynatrace-sdk/react-hooks` (DQL + user/app state), `@dynatrace-sdk/app-environment`, `@dynatrace-sdk/http-client` (the Extensions v2 API call behind account-name resolution)
 - **dt-app CLI** 1.9 for build / dev server / deploy
 - **Vitest 4** for unit tests
 

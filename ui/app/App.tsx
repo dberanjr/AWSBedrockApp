@@ -16,6 +16,7 @@ import { ScanLimitProvider } from "./scope/ScanLimitContext";
 import { ScopeProvider } from "./scope/ScopeContext";
 import { GlobalFilterProvider } from "./scope/GlobalFilterContext";
 import { ScanReportProvider } from "./scope/ScanReportContext";
+import { AccountNamesProvider } from "./scope/AccountNamesContext";
 import { ThemeStyles } from "./theme/ThemeStyles";
 import { TweaksProvider } from "./tweaks/TweaksContext";
 import { TweaksPanel } from "./tweaks/TweaksPanel";
@@ -28,6 +29,7 @@ export const App = () => {
   return (
     <TweaksProvider>
     <ModelPricingProvider>
+    <AccountNamesProvider>
     <SegmentsProvider>
     <SamplingProvider>
     <ScanLimitProvider>
@@ -72,6 +74,7 @@ export const App = () => {
     </ScanLimitProvider>
     </SamplingProvider>
     </SegmentsProvider>
+    </AccountNamesProvider>
     </ModelPricingProvider>
     </TweaksProvider>
   );

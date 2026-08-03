@@ -4,10 +4,11 @@ import { Heading, Text } from "@dynatrace/strato-components/typography";
 import { Skeleton } from "@dynatrace/strato-components/content";
 import { useScope } from "../../scope/ScopeContext";
 import { useGlobalFilters } from "../../scope/GlobalFilterContext";
+import { useAccountNames } from "../../scope/AccountNamesContext";
 import { useTweaks } from "../../tweaks/TweaksContext";
 import { ExampleDataNotice } from "../../components/ExampleDataNotice";
 import { ScopeSelectors, type PickerOption } from "../../components/ScopeSelectors";
-import { fmtCount } from "../../data/format";
+import { fmtAccount, fmtCount } from "../../data/format";
 import type { BedrockScope } from "../../bedrock/types";
 import { useBedrockAvailable, useBedrockFacets, useBedrockOverview } from "../../bedrock/useBedrock";
 import { BedrockHero } from "./BedrockHero";
@@ -42,8 +43,9 @@ export const RuntimePage = () => {
   const { showDemoData } = useTweaks();
   // The availability probe always runs for real (unless demo mode is already
   // forced on, in which case its result is irrelevant) — see
-  // useBedrockAvailable's own doc comment.
-  const { available, isLoading: availLoading } = useBedrockAvailable();
+  // useBedrockAvailable's own doc comment. Scoped to the SAME timeframe as
+  // every other query on this page, so it can't disagree with them.
+  const { available, isLoading: availLoading } = useBedrockAvailable(scope.timeframe);
   // Only treat "no telemetry" as true once the probe has actually resolved —
   // otherwise every page would flash example data for a moment on load.
   const showExample = showDemoData || (!availLoading && !available);
@@ -77,9 +79,10 @@ export const RuntimePage = () => {
     showExample,
   );
 
+  const { names: accountNames } = useAccountNames();
   const accountOptions = useMemo<PickerOption[]>(
-    () => accountOpts.map((a) => ({ value: a, label: a })),
-    [accountOpts],
+    () => accountOpts.map((a) => ({ value: a, label: fmtAccount(a, accountNames[a]) || a })),
+    [accountOpts, accountNames],
   );
 
   // Model options are deduped by FRIENDLY label (several raw modelIds — an

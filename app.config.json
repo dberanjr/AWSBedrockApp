@@ -1,9 +1,9 @@
 {
   "$schema": "./.dt-app/app.config.schema.json",
-  "environmentUrl": "https://due93336.apps.dynatrace.com/",
+  "environmentUrl": "https://your-tenant.apps.dynatrace.com/",
   "app": {
     "name": "AWS Bedrock Observability App",
-    "version": "0.2.1",
+    "version": "0.3.6",
     "description": "Runtime observability, cost & usage, and access governance for AWS Bedrock",
     "id": "my.aws.bedrock.observability.app",
     "scopes": [
@@ -15,7 +15,8 @@
       { "name": "state:user-app-states:read", "comment": "Read per-user persisted state (timeframe, sampling, scan limit, tweaks, filters)" },
       { "name": "state:user-app-states:write", "comment": "Persist per-user state changes" },
       { "name": "state:app-states:read", "comment": "Read org-wide app state (model rates shared across all users of this app)" },
-      { "name": "state:app-states:write", "comment": "Persist org-wide app state (model rate edits made via the Model Rates panel)" }
+      { "name": "state:app-states:write", "comment": "Persist org-wide app state (model rate edits made via the Model Rates panel)" },
+      { "name": "extensions:configurations:read", "comment": "Read the AWS extension's monitoring configurations to resolve account id -> friendly connection name" }
     ]
   }
 }

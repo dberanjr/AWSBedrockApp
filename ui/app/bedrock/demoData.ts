@@ -29,7 +29,7 @@
  * a flat repeated value.
  */
 
-import { foldDailyCost, type BedrockDailyCostPoint } from "./series";
+import { foldDailyCost, foldErrorRateSpark, foldSessionsSpark, type BedrockDailyCostPoint } from "./series";
 import type { BedrockCostSummary } from "./cost";
 import {
   parseOverview,
@@ -139,6 +139,15 @@ const ACCOUNT_SHARE: Record<string, number> = {
   "777788889999": 0.15,
 };
 
+/** Friendly connection names for the demo accounts (`useAccountNames`'s demo
+ *  branch) — so "Show Demo Data" also demonstrates the "Name (id)" account
+ *  format, not just bare ids. */
+export const DEMO_ACCOUNT_NAMES: Record<string, string> = {
+  "111122223333": "prod-genai-platform",
+  "444455556666": "staging-ml-workloads",
+  "777788889999": "sandbox-experiments",
+};
+
 /** Raw Bedrock modelIds, as they'd actually appear in a ModelInvocationLog
  *  `modelId` field — region/inference-profile prefixed, dated, versioned.
  *  The Llama id is deliberately absent from the pricing tables so the demo
@@ -223,20 +232,36 @@ const foldedDailyCost = foldDailyCost(dailyCostRecords);
 export const DEMO_DAILY_COST: BedrockDailyCostPoint[] = foldedDailyCost.daily;
 export const DEMO_COST_SUMMARY: BedrockCostSummary = foldedDailyCost.summary;
 
-/** Splits each daily bucket's actual spend into two finer sub-buckets (with a
- *  small alternating bias) for the Total Spend hero sparkline — same total
- *  spend as the daily chart, just a smoother, non-flat trend line. */
-const splitSparkFromDaily = (daily: BedrockDailyCostPoint[]): { values: number[]; labels: string[] } => {
-  const values: number[] = [];
-  const labels: string[] = [];
-  daily.forEach((d, i) => {
-    const biasA = i % 2 === 0 ? 0.54 : 0.46;
-    values.push(d.actual * biasA, d.actual * (1 - biasA));
-    labels.push(d.day, d.day);
-  });
-  return { values, labels };
+/** Same 14-bucket cadence as every other demo spark series (DEMO_PERF_SERIES,
+ *  DEMO_ERROR_RATE_SPARK, DEMO_SESSIONS_SPARK below) — used to be a finer
+ *  28-point split, which made the Total Spend hero + Est cost tile look less
+ *  granular than the rest of the row in real usage too (the real hooks now
+ *  all share one `pickChartIntervalSec` ladder; demo data mirrors that). */
+export const DEMO_COST_SPARK = {
+  values: DEMO_DAILY_COST.map((d) => d.actual),
+  labels: DEMO_DAILY_COST.map((d) => d.day),
 };
-export const DEMO_COST_SPARK = splitSparkFromDaily(DEMO_DAILY_COST);
+
+/** Error-rate spark (useBedrockErrorRateSpark) — invocations and errors are
+ *  distributed with DIFFERENT variance shapes (like DEMO_GUARDRAIL_TREND_RATE
+ *  below) so the per-bucket rate genuinely swings instead of tracking raw
+ *  volume in lockstep. Sessions spark (useAgentSessionsSpark) — 18 sessions
+ *  spread thinly across 14 buckets, same fleet shape as the daily-cost chart. */
+export const DEMO_ERROR_RATE_SPARK = foldErrorRateSpark([
+  {
+    invocations: distribute(TOTAL_INVOCATIONS, weightsOf(VARIANCE.fleet)),
+    errors: distribute(TOTAL_ERRORS, weightsOf(VARIANCE.llama)),
+    timeframe: demoTimeframe(),
+    interval: DAY_INTERVAL_NS,
+  },
+]);
+export const DEMO_SESSIONS_SPARK = foldSessionsSpark([
+  {
+    sessions: distribute(TOTAL_SESSIONS, weightsOf(VARIANCE.novaPro)),
+    timeframe: demoTimeframe(),
+    interval: DAY_INTERVAL_NS,
+  },
+]);
 
 // ---------------------------------------------------------------------------
 // Per-account cost (useBedrockAccountCost)

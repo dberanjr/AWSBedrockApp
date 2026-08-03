@@ -52,55 +52,78 @@ export const UNKNOWN_PRICE: ModelPricing = {
   tier: "mid",
 };
 
-/** General rate card — third-party foundation models available via Bedrock. */
+/** General rate card — third-party foundation models available via Bedrock.
+ *
+ * The Claude-5-family rates below (opus-4-5 through opus-4-8, sonnet-4-5/4-6,
+ * haiku-4-5, sonnet-5, fable-5) were reconciled 2026-08 against the "Total
+ * Estimated Cost" tile of the customer's own cost dashboard (due93336, "AWS
+ * Bedrock - Project Smith - Cost & Usage 2.0") — this app's numbers had
+ * drifted from that reference rate card, notably pricing Opus 4.5-4.8 nearly
+ * 3x too high. Don't "correct" these back to a generic/list price without
+ * re-checking that dashboard; it's the tenant's source of truth for these
+ * specific negotiated rates. */
 export const PRICING: Record<string, ModelPricing> = {
   // Anthropic
   "claude-opus-4-5": {
-    inputPerMTok: 15,
-    outputPerMTok: 75,
+    inputPerMTok: 5.5,
+    outputPerMTok: 27.5,
     contextWindow: 200_000,
     provider: "Anthropic",
     tier: "frontier",
   },
   "claude-sonnet-4-6": {
-    inputPerMTok: 3,
-    outputPerMTok: 15,
+    inputPerMTok: 3.3,
+    outputPerMTok: 16.5,
     contextWindow: 200_000,
     provider: "Anthropic",
     tier: "high",
   },
   "claude-sonnet-4-5": {
-    inputPerMTok: 3,
-    outputPerMTok: 15,
+    inputPerMTok: 3.3,
+    outputPerMTok: 16.5,
     contextWindow: 200_000,
     provider: "Anthropic",
     tier: "high",
   },
   "claude-haiku-4-5": {
-    inputPerMTok: 1,
-    outputPerMTok: 5,
+    inputPerMTok: 1.1,
+    outputPerMTok: 5.5,
     contextWindow: 200_000,
     provider: "Anthropic",
     tier: "mid",
   },
   "claude-opus-4-6": {
-    inputPerMTok: 15,
-    outputPerMTok: 75,
+    inputPerMTok: 5.5,
+    outputPerMTok: 27.5,
     contextWindow: 200_000,
     provider: "Anthropic",
     tier: "frontier",
   },
   "claude-opus-4-7": {
-    inputPerMTok: 15,
-    outputPerMTok: 75,
+    inputPerMTok: 5.5,
+    outputPerMTok: 27.5,
     contextWindow: 200_000,
     provider: "Anthropic",
     tier: "frontier",
   },
   "claude-opus-4-8": {
-    inputPerMTok: 15,
-    outputPerMTok: 75,
+    inputPerMTok: 5.5,
+    outputPerMTok: 27.5,
     contextWindow: 200_000,
+    provider: "Anthropic",
+    tier: "frontier",
+  },
+  "claude-sonnet-5": {
+    inputPerMTok: 2.2,
+    outputPerMTok: 11,
+    contextWindow: 200_000,
+    provider: "Anthropic",
+    tier: "high",
+  },
+  "fable-5": {
+    inputPerMTok: 11,
+    outputPerMTok: 55,
+    contextWindow: null,
     provider: "Anthropic",
     tier: "frontier",
   },
@@ -241,8 +264,11 @@ export const PRICING_BEDROCK: Record<string, ModelPricing> = {
     inputPerMTok: 0.06, outputPerMTok: 0.24, contextWindow: 300_000,
     provider: "Amazon", tier: "low",
   },
+  // Reconciled 2026-08 against the Project Smith cost dashboard (see PRICING's
+  // doc comment) — Nova 2 is a distinct, pricier generation from Nova 1 Lite;
+  // this had been copy-pasted from "nova-lite" and was ~5-11x too low.
   "nova-2-lite": {
-    inputPerMTok: 0.06, outputPerMTok: 0.24, contextWindow: 300_000,
+    inputPerMTok: 0.33, outputPerMTok: 2.75, contextWindow: 300_000,
     provider: "Amazon", tier: "low",
   },
   "nova-micro": {
@@ -253,8 +279,16 @@ export const PRICING_BEDROCK: Record<string, ModelPricing> = {
     inputPerMTok: 0.8, outputPerMTok: 3.2, contextWindow: 300_000,
     provider: "Amazon", tier: "mid",
   },
+  "nova-premier": {
+    inputPerMTok: 2.5, outputPerMTok: 12.5, contextWindow: null,
+    provider: "Amazon", tier: "high",
+  },
   "titan-text-lite": {
     inputPerMTok: 0.15, outputPerMTok: 0.2, contextWindow: 4_096,
+    provider: "Amazon", tier: "low",
+  },
+  "titan-text-express": {
+    inputPerMTok: 0.2, outputPerMTok: 0.6, contextWindow: null,
     provider: "Amazon", tier: "low",
   },
   "titan-text-premier": {
